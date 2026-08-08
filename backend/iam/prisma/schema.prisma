@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  username    String   @id
+  password    String
+  first_name  String
+  last_name   String
+  father_name String?
+  field       String
+  student_id  String?
+  phone       String?
+  mail        String @unique
+  verified    Boolean?
+}
+
+model Field {
+  name String @id
+}
+
+model Admin {
+  username String @id
+}
+
+model Owner {
+  username String @id
+}
+
+model Shop {
+  username String
+  cid      Int
+
+  @@id([username, cid])
+}
+
+model Answer {
+  username String
+  qid      Int
+  ans      Int
+
+  @@id([username, qid])
+}
+
+model Course {
+  cid           Int      @id
+  description   String?
+  start_time    DateTime
+  end_time      DateTime
+  start_sign_up DateTime
+  end_sign_up   DateTime
+  price         Int
+  field1        String
+  field2        String?
+  name          String
+  is_valid      Boolean
+}
+
+model Comment {
+  id         Int    @id @default(autoincrement())
+  sender     String
+  text       String
+  course     Int
+  replied_to Int?
+}
+
+model Exam {
+  eid        Int      @id
+  start_time DateTime
+  end_time   DateTime
+  duration   Int
+  min_score  Float
+  courseCid  Int
+}
+
+model Message {
+  reciver String
+  sender  String
+  text    String
+
+  @@id([reciver, sender, text])
+}
+
+model Question {
+  qid     Int    @id
+  quest   String
+  option1 String
+  option2 String
+  option3 String
+  option4 String
+  option5 String
+  ans     Int
+}
+
+model Student {
+  username String
+  cid      Int
+
+  @@id([username, cid])
+}
+
+model Teacher {
+  username String
+  cid      Int
+
+  @@id([username, cid])
+}
+
+model Time {
+  cid        Int
+  start_time Int
+  end_time   Int
+  day        String
+
+  @@id([cid, start_time, day])
+}
+
+model Score {
+  username String
+  eid      Int
+  score    Float
+
+  @@id([username, eid])
+}
+
+model Otp {
+  mail       String   @id
+  otp        String
+  expiration DateTime
+}

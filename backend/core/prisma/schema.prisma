@@ -1,0 +1,221 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  username        String            @id
+  password        String
+  first_name      String
+  last_name       String
+  father_name     String?
+  field           String
+  student_id      String?
+  phone           String?
+  mail            String            @unique
+  verified        Boolean?
+  Teacher         Teacher[]
+  CourseRequester CourseRequester[]
+  students        Student[]
+  certificates  Certificate[]
+}
+
+model Field {
+  name String @id
+}
+
+model Admin {
+  username String @id
+}
+
+model Owner {
+  username String @id
+}
+
+model Shop {
+  username String
+  cid      Int
+
+  @@id([username, cid])
+}
+
+model Answer {
+  username String
+  qid      Int
+  ans      Int?
+
+  @@id([username, qid])
+}
+
+model Course {
+  cid           Int      @id
+  description   String?
+  start_time    DateTime
+  end_time      DateTime
+  start_sign_up DateTime
+  end_sign_up   DateTime
+  price         Int
+  field1        String
+  field2        String?
+  name          String
+  image         String?
+  is_valid      Boolean
+
+  teachers        Teacher[]         @relation("CourseTeachers")
+  CourseRequester CourseRequester[]
+  students        Student[]
+  CourseMessage   CourseMessage[]
+  exams           Exam[]
+}
+
+model Comment {
+  id         Int    @id @default(autoincrement())
+  sender     String
+  text       String
+  course     Int
+  replied_to Int?
+
+  CommentReviewMessage CommentReviewMessage[]
+}
+
+model Exam {
+  eid        Int      @id @default(autoincrement())
+  start_time DateTime
+  end_time   DateTime
+  duration   Int
+  min_score  Float
+  courseCid  Int
+  is_valid   Boolean  @default(false)
+  course     Course   @relation(fields: [courseCid], references: [cid])
+
+  questions   Question[]
+  ExamMessage ExamMessage[]
+  certificates  Certificate[]
+
+}
+
+model Message {
+  id      Int      @id @default(autoincrement())
+  reciver String
+  sender  String
+  text    String
+  date    DateTime @default(now())
+
+  @@unique([reciver, sender, text])
+}
+
+model CourseMessage {
+  id      Int      @id @default(autoincrement())
+  sender  String
+  reciver String
+  cid     Int
+  text    String
+  date    DateTime @default(now())
+
+  course Course @relation(fields: [cid], references: [cid])
+}
+
+model ExamMessage {
+  id      Int      @id @default(autoincrement())
+  sender  String
+  reciver String
+  eid     Int
+  text    String
+  date    DateTime @default(now())
+
+  exam Exam @relation(fields: [eid], references: [eid])
+}
+
+model CommentReviewMessage {
+  id        Int      @id @default(autoincrement())
+  sender    String
+  reciver   String
+  commentId Int
+  text      String
+  date      DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id])
+}
+model Question {
+  qid     Int    @id @default(autoincrement())
+  quest   String
+  option1 String
+  option2 String
+  option3 String?
+  option4 String?
+  option5 String?
+  ans     Int
+  examEid Int
+
+  exam Exam @relation(fields: [examEid], references: [eid])
+}
+
+model Student {
+  username String
+  cid      Int
+  course   Course @relation(fields: [cid], references: [cid])
+  user     User   @relation(fields: [username], references: [username])
+
+  @@id([username, cid])
+}
+
+model Teacher {
+  username String
+  cid      Int
+
+  user   User   @relation(fields: [username], references: [username])
+  course Course @relation("CourseTeachers", fields: [cid], references: [cid])
+
+  @@id([username, cid])
+}
+
+model Time {
+  cid        Int
+  start_time Int
+  end_time   Int
+  day        String
+
+  @@id([cid, start_time, day])
+}
+
+model Score {
+  username String
+  eid      Int
+  score    Float
+
+  @@id([username, eid])
+}
+
+model Otp {
+  mail       String   @id
+  otp        String
+  expiration DateTime
+}
+
+model CourseRequester {
+  username String
+  cid      Int
+
+  user   User   @relation(fields: [username], references: [username])
+  course Course @relation(fields: [cid], references: [cid])
+
+  @@id([username, cid])
+}
+
+
+model Certificate {
+  id         Int      @id @default(autoincrement())
+  username   String
+  eid        Int
+  file_path  String
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [username], references: [username])
+  exam Exam @relation(fields: [eid], references: [eid])
+
+  @@unique([username, eid])
+}

@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "types": ["node", "jest"],
+    "target": "es2022",
+    "moduleResolution": "node",
+    "moduleDetection": "force",
+    "outDir": "dist",
+    "baseUrl": "./src",
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "allowJs": true,
+    "lib": ["ESNext"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "skipLibCheck": true,
+    "isolatedModules": true
+  },
+  "include": [
+    "src/**/*",
+    "src/types/**/*",
+    "tests/**/*",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+  "exclude": ["node_modules"]
+}

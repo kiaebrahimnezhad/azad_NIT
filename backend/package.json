@@ -1,0 +1,20 @@
+{
+  "dependencies": {
+    "axios": "^1.7.9",
+    "express": "^4.21.2",
+    "mongoose": "^8.14.3",
+    "multer": "^1.4.5-lts.2",
+    "nodemailer": "^6.10.0"
+  },
+  "scripts": {
+    "start": "nodemon apigateway.ts"
+  },
+  "devDependencies": {
+    "@types/dotenv": "^6.1.1",
+    "@types/express": "^5.0.0",
+    "@types/multer": "^1.4.12",
+    "dotenv": "^16.4.7",
+    "nodemon": "^3.1.9",
+    "ts-node": "^10.9.2"
+  }
+}

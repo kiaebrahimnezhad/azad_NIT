@@ -1,0 +1,36 @@
+version: "3"
+services:
+  iam:
+    build: ./iam
+    image: iam
+    container_name: iam_container
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./iam/.env
+    networks:
+      - app-network
+
+  core:
+    build: ./core
+    image: core
+    container_name: core_container
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./core/.env
+    networks:
+      - app-network
+
+  api-gateway:
+    build: .
+    image: api
+    container_name: api_container
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
