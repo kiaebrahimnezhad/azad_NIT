@@ -44,3 +44,40 @@ export interface PublicContext {
   refreshSession: () => Promise<void>;
 }
 // تعریف بهینه تایپ ها و حذف any
+
+
+
+
+// تعریف تایپ های مربوط به دوره ها و معلمین
+export interface Teacher {
+  user: {
+    first_name: string;
+    last_name: string;
+  };
+}
+
+// تعریف تایپ های مربوط به دوره ها
+export interface Course {
+  cid: number;
+  name: string;
+  field1: string;
+  field2: string;
+  price: number;
+  image: string | null;
+  teachers: Teacher[];
+  is_valid: boolean;
+}
+
+// تعریف تایپ های مربوط به درخواست جستجوی دوره ها
+export interface CourseSearchRequest {
+  course?: string;
+  teacher?: string;
+  field?: string;
+}
+
+// تعریف تایپ های مربوط به پاسخ جستجوی دوره ها
+export interface CourseSearchResponse {
+  success: boolean;
+  data?: Course[];
+  message?: string;
+}

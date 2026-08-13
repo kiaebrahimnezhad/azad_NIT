@@ -24,6 +24,7 @@ import { AuthContext, AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // سازگاری موقت با فایل‌هایی که هنوز publicContext را از App import می‌کنند.
+// درست شد باید حذف شود و از AuthContext استفاده شود.
 export const publicContext = AuthContext;
 
 function AppRoutes() {
@@ -33,7 +34,7 @@ function AppRoutes() {
       <Route path="/login" element={<LoginT />} />
       <Route path="/signin" element={<Signin />} />
       <Route path="/course/:cid" element={<CourseDetail />} />
-
+      {/* مسیرهای محافظت‌شده */}
       <Route
         path="/user/course"
         element={<ProtectedRoute allow={["normal"]}><MyCourse /></ProtectedRoute>}
@@ -100,7 +101,10 @@ function AppRoutes() {
         element={<ProtectedRoute allow={["owner"]}><Owner /></ProtectedRoute>}
       />
 
-      {import.meta.env.DEV && <Route path="/test" element={<Testp />} />}
+      {/* {import.meta.env.DEV && <Route path="/test" element={<Testp />} />} */}
+      <Route path="/test" element={<Testp />} /> 
+      <Route path="*" element={<div className="min-h-screen grid place-items-center">صفحه مورد نظر یافت نشد.</div>} />
+      
     </Routes>
   );
 }
