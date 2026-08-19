@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import useWindowSize from "../../hooks/useWindowSize";
+import { coreApi, userSafeErrorMessage } from "../../lib/api";
 
 interface Message {
   reciver: string;
   sender: string;
   text: string;
   date: string; // اضافه‌شده برای دریافت تاریخ
+}
+
+interface MessagesResponse {
+  messages: Message[];
 }
 
 // تابع تبدیل ISO به تاریخ شمسی (بدون ساعت)
@@ -21,45 +25,25 @@ const toShamsiDate = (iso: string): string => {
 
 const Messages: React.FC = () => {
   const { width } = useWindowSize();
-  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (localStorage.getItem("isUserLogin") === "") {
-      navigate("../login");
-    }
-  }, [navigate]);
-
-  useEffect(() => {
     const fetchMessages = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const response = await fetch("http://localhost:5000/user/get-message", {
-          method: "GET",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error("خطا در دریافت پیام‌ها");
-        }
-
-        const result = await response.json();
+        const { data } = await coreApi.get<MessagesResponse>("/user/get-message");
         // نگاشت پیام‌ها و تبدیل تاریخ
         setMessages(
-          result.messages.map((m: any) => ({
+          data.messages.map((m) => ({
             reciver: m.reciver,
             sender: m.sender,
             text: m.text,
             date: toShamsiDate(m.date),
           }))
         );
-      } catch {
-        setError("خطا در دریافت پیام‌ها");
+      } catch (e) {
+        setError(userSafeErrorMessage(e, "خطا در دریافت پیام‌ها"));
       } finally {
         setLoading(false);
       }

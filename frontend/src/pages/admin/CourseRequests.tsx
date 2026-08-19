@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import useWindowSize from "../../hooks/useWindowSize";
-
-import Header from "../../components/Header";
-import AdminPanel from "../../components/AdminPanel";
+import { coreApi, isAxiosErrorWithMessage } from "../../lib/api";
 
 interface CourseRequest {
   id: number;
@@ -15,12 +13,9 @@ interface CourseRequest {
   date: string;
 }
 
-const CourseRequests: React.FC = () => {
+function CourseRequests()  {
   const { width } = useWindowSize();
-  const navigate = useNavigate();
-  const [courseRequests, setCourseRequests] = React.useState<CourseRequest[]>(
-    []
-  );
+  const [courseRequests, setCourseRequests] = useState<CourseRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,16 +42,7 @@ const CourseRequests: React.FC = () => {
     type: "success" | "error";
   } | null>(null);
 
-  useEffect(() => {
-    if (
-      localStorage.getItem("isUserLogin") === "" ||
-      localStorage.getItem("userType") !== "admin"
-    ) {
-      navigate("../login");
-    }
-  }, [navigate]);
 
-  const getToken = () => localStorage.getItem("token");
   const toShamsiDate = (iso: string): string => {
     const dt = new Date(iso);
     return new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
@@ -69,32 +55,21 @@ const CourseRequests: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const token = getToken();
-      if (!token) {
-        setError("ابتدا وارد شوید");
-        return;
-      }
-      const response = await fetch(
-        "http://localhost:5000/admin/course-message",
-        {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-        }
+      const { data } = await coreApi.get<{ messages: CourseRequest[] }>(
+        "/admin/course-message"
       );
-      if (!response.ok) {
-        setError("خطایی رخ داده است");
-        throw new Error("خطا در دریافت  درخواستها");
-      }
-      const data = await response.json();
       setCourseRequests(
-        data.messages.map((m: any) => ({
+        data.messages.map((m) => ({
           ...m,
-          date: toShamsiDate(m.date), // ← این خط اضافه شد
+          date: toShamsiDate(m.date),
         }))
       );
-      setLoading(false);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(
+        isAxiosErrorWithMessage(e) && e.response?.data?.message
+          ? e.response.data.message
+          : "خطایی رخ داده است"
+      );
     } finally {
       setLoading(false);
     }
@@ -110,29 +85,18 @@ const CourseRequests: React.FC = () => {
       return;
     }
     try {
-      const token = getToken();
-      if (!token) throw new Error("ابتدا وارد شوید");
-      const response = await fetch(
-        "http://localhost:5000/admin/invalid-course",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            cid: deleteModal.cid,
-            message: deleteModal.message.trim(),
-          }),
-        }
-      );
-      if (!response.ok) throw new Error("خطا در رد درخواست");
+      await coreApi.post("/admin/invalid-course", {
+        cid: deleteModal.cid,
+        message: deleteModal.message.trim(),
+      });
       showNotification(" دوره با موفقیت حذف شد", "success");
       setDeleteModal({ open: false, cid: null, message: "" });
       fetchData();
     } catch (err) {
       showNotification(
-        err instanceof Error ? err.message : "خطایی رخ داد",
+        isAxiosErrorWithMessage(err) && err.response?.data?.message
+          ? err.response.data.message
+          : "خطا در رد درخواست",
         "error"
       );
     }
@@ -144,32 +108,18 @@ const CourseRequests: React.FC = () => {
       return;
     }
     try {
-      const token = getToken();
-      console.log(token);
-      console.log("courseId:", approveModal.courseId);
-      console.log("message:", approveModal.message.trim());
-      if (!token) throw new Error("ابتدا وارد شوید");
-      const response = await fetch(
-        "http://localhost:5000/admin/validate-course",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            courseId: approveModal.courseId,
-            message: approveModal.message.trim(),
-          }),
-        }
-      );
-      if (!response.ok) throw new Error("خطا در تایید دوره");
+      await coreApi.post("/admin/validate-course", {
+        courseId: approveModal.courseId,
+        message: approveModal.message.trim(),
+      });
       showNotification("دوره با موفقیت تایید شد", "success");
       setApproveModal({ open: false, courseId: null, message: "" });
       fetchData();
     } catch (err) {
       showNotification(
-        err instanceof Error ? err.message : "خطایی رخ داد",
+        isAxiosErrorWithMessage(err) && err.response?.data?.message
+          ? err.response.data.message
+          : "خطا در تایید دوره",
         "error"
       );
     }
@@ -348,14 +298,13 @@ const CourseRequests: React.FC = () => {
                               <div className="flex items-center space-x-2 ">
                                 <button
                                   className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white py-3 rounded-lg text-sm font-medium transition-all duration-200 transform active:scale-95"
-                                  onClick={() => {
-                                    console.log(cr.cid);
+                                  onClick={() =>
                                     setApproveModal({
                                       open: true,
                                       courseId: cr.cid,
                                       message: "",
-                                    });
-                                  }}
+                                    })
+                                  }
                                 >
                                   ✓ تایید
                                 </button>
@@ -512,88 +461,6 @@ const CourseRequests: React.FC = () => {
               )}
             </div>
 
-            {/* Delete Modal */}
-            {deleteModal.open && (
-              <div
-                className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
-                onClick={() =>
-                  setDeleteModal({ open: false, cid: null, message: "" })
-                }
-              >
-                <div
-                  className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-medium text-gray-900">
-                        حذف نظر
-                      </h3>
-                      <button
-                        onClick={() =>
-                          setDeleteModal({
-                            open: false,
-                            cid: null,
-                            message: "",
-                          })
-                        }
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <svg
-                          className="w-6 h-6"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                    <p className="text-gray-700 mb-4">
-                      شما در حال حذف دوره گزارش داده شده از صفحه دوره هستید
-                    </p>
-                    <textarea
-                      value={deleteModal.message}
-                      onChange={(e) =>
-                        setDeleteModal({
-                          ...deleteModal,
-                          message: e.target.value,
-                        })
-                      }
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      rows={4}
-                      placeholder="پیغام مربوطه را برای کاربر گزارش دهنده بنویسید"
-                    />
-                    <div className="flex justify-end space-x-4 space-x-reverse mt-6">
-                      <button
-                        onClick={() =>
-                          setDeleteModal({
-                            open: false,
-                            cid: null,
-                            message: "",
-                          })
-                        }
-                        className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
-                      >
-                        انصراف
-                      </button>
-                      <button
-                        onClick={confirmDelete}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                      >
-                        ارسال
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Approve Modal */}
             {approveModal.open && (
               <div
@@ -676,7 +543,7 @@ const CourseRequests: React.FC = () => {
               </div>
             )}
 
-            {/* Notification */}
+            {/* Delete Modal */}
             {deleteModal.open && (
               <div
                 className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
@@ -755,6 +622,19 @@ const CourseRequests: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Notification */}
+            {notification && (
+              <div
+                className={`fixed top-4 left-4 px-6 py-3 rounded-lg shadow-lg z-50 ${
+                  notification.type === "success"
+                    ? "bg-green-500 text-white"
+                    : "bg-red-500 text-white"
+                }`}
+              >
+                {notification.message}
               </div>
             )}
           </div>

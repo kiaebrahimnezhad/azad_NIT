@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import useWindowSize from "../../hooks/useWindowSize";
+import { CORE_API_BASE_URL, coreApi } from "../../lib/api";
+import EnrolledCourseCard from "../../components/EnrolledCourseCard";
 
-interface Course {
+export interface Course {
   cid: number;
   description: string;
   start_time: string;
@@ -19,8 +20,7 @@ interface Course {
 
 type ToastType = "info" | "success" | "error";
 
-const MyCourse: React.FC = () => {
-  const navigate = useNavigate();
+function MyCourse(){
   const { width } = useWindowSize();
   const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,34 +41,17 @@ const MyCourse: React.FC = () => {
   };
 
   useEffect(() => {
-    if (localStorage.getItem("isUserLogin") === "") {
-      navigate("../login");
-    }
-  }, [navigate]);
-
-  useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const response = await fetch("http://localhost:5000/user/overview", {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error("خطا در دریافت اطلاعات");
-        }
-
-        const result = await response.json();
+        const { data: result } = await coreApi.get<{ success: boolean; data: { enrolledCourses: Course[] } }>(
+          "/user/overview"
+        );
         if (result.success) {
           setEnrolledCourses(result.data.enrolledCourses);
         } else {
           setError("خطا در دریافت اطلاعات دوره ها");
         }
-      } catch (err) {
+      } catch {
         setError("خطا در ارتباط با سرور");
       } finally {
         setLoading(false);
@@ -78,40 +61,12 @@ const MyCourse: React.FC = () => {
     fetchCourses();
   }, []);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("fa-IR", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
   const handleDownloadCertificates = async (cid: number) => {
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        showToast("ابتدا وارد شوید", "error");
-        return;
-      }
-      // درخواست دریافت مسیر گواهی‌ها
-      const res = await fetch("http://localhost:5000/courses/certificate", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ cid }),
-      });
-
-      if (!res.ok) {
-        showToast("خطا در دریافت گواهی", "error");
-        return;
-      }
-
-      const data = await res.json() as { success: boolean; files?: string[] };
+      const { data } = await coreApi.post<{ success: boolean; files?: string[] }>(
+        "/courses/certificate",
+        { cid }
+      );
       const files = data.files ?? [];
 
       if (files.length === 0) {
@@ -127,7 +82,7 @@ const MyCourse: React.FC = () => {
         const clean = fp.replace(/^\/+/, ""); // حذف اسلش ابتدا
         const fullUrl = fp.startsWith("http")
           ? fp
-          : `http://localhost:5000/${clean}`;
+          : `${CORE_API_BASE_URL}/${clean}`;
 
         const a = document.createElement("a");
         a.href = fullUrl;
@@ -139,14 +94,9 @@ const MyCourse: React.FC = () => {
         a.click();
         document.body.removeChild(a);
       });
-    } catch (e) {
-      showToast("خطا در شروع دانلود گواهی", "error");
+    } catch {
+      showToast("خطا در دریافت گواهی", "error");
     }
-  };
-
-  // این تابع در کد فعلی استفاده نشده، باقی گذاشته می‌شود اگر لازم شد:
-  const handleTakeExam = (cid: number) => {
-    navigate("./TakeExam.txt", { state: { cid } });
   };
 
   return (
@@ -205,60 +155,11 @@ const MyCourse: React.FC = () => {
             ) : (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {enrolledCourses.map((course) => (
-                  <div
+                  <EnrolledCourseCard
                     key={course.cid}
-                    className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
-                  >
-                    <div className="p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-gray-900 line-clamp-2">
-                          {course.name}
-                        </h3>
-                      </div>
-
-                      <div className="space-y-3 mb-6">
-                        <div className="flex items-center text-sm text-gray-600">
-                          <svg className="w-4 h-4 ml-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                          </svg>
-                          <span className="font-medium">شروع:</span>
-                          <span className="mr-2">{formatDate(course.start_time)}</span>
-                        </div>
-
-                        <div className="flex items-center text-sm text-gray-600">
-                          <svg className="w-4 h-4 ml-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                          </svg>
-                          <span className="font-medium">پایان:</span>
-                          <span className="mr-2">{formatDate(course.end_time)}</span>
-                        </div>
-
-                        <div className="flex items-center text-sm text-gray-600">
-                          <svg className="w-4 h-4 ml-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
-                          </svg>
-                          <span className="font-medium">رشته:</span>
-                          <span className="mr-2">{course.field1}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <Link
-                          className="flex-1 text-center bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                          to={`/user/userPage/examPage/${course.cid}`}
-                        >
-                          شرکت در آزمون
-                        </Link>
-
-                        <button
-                          onClick={() => handleDownloadCertificates(course.cid)}
-                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-                        >
-                          دریافت گواهی
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                    course={course}
+                    onDownloadCertificate={handleDownloadCertificates}
+                  />
                 ))}
               </div>
             )}

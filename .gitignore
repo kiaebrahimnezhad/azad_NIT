@@ -22,3 +22,5 @@ Thumbs.db
 frontend/**/db.json
 
 **/*.zip
+
+msg.txt

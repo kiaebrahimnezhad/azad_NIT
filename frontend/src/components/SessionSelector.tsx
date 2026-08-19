@@ -39,7 +39,7 @@ const SessionSelector: React.FC<SessionSelectorProps> = ({
         id="start_time"
         name="start_time"
         label="زمان شروع"
-        pHolder=""
+        placeholder=""
         description=""
         onChange={(e) => setSession(e)}
         disabled={disabled}
@@ -54,7 +54,7 @@ const SessionSelector: React.FC<SessionSelectorProps> = ({
         id="end_time"
         name="end_time"
         label="زمان پایان"
-        pHolder=""
+        placeholder=""
         description=""
         onChange={(e) => setSession(e)}
         disabled={disabled}

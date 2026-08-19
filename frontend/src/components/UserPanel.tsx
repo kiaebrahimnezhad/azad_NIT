@@ -1,7 +1,7 @@
-import React, { useContext, useEffect, useState } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
 import useWindowSize from "../hooks/useWindowSize";
-import { publicContext } from "../App";
+import { useAuth } from "../context/AuthContext";
 
 interface UserPanelProps {
   activePanel: string;
@@ -11,7 +11,7 @@ interface UserPanelProps {
 interface MenuItem {
   key: string;
   label: string;
-  path: string;
+  path?: string;
   icon: React.ReactNode;
 }
 
@@ -29,7 +29,7 @@ const menuItems: MenuItem[] = [
   {
     key: "information",
     label: "اطلاعات کاربری",
-    path: "/user/information",
+    // path: "/user/information",
     icon: (
       <svg className="w-5 h-5 ml-3" fill="currentColor" viewBox="0 0 20 20">
         <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.84L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.84l-7-3z" />
@@ -40,7 +40,7 @@ const menuItems: MenuItem[] = [
   {
     key: "MyCourse",
     label: "دوره های ثبت نامی",
-    path: "/user/MyCourse",
+    // path: "/user/MyCourse",
     icon: (
       <svg className="w-5 h-5 ml-3" fill="currentColor" viewBox="0 0 20 20">
         <path
@@ -54,7 +54,7 @@ const menuItems: MenuItem[] = [
   {
     key: "MyRequestedCourse",
     label: "دوره های من",
-    path: "/user/MyRequestedCourse",
+    // path: "/user/MyRequestedCourse",
     icon: (
       <svg className="w-5 h-5 ml-3" fill="currentColor" viewBox="0 0 20 20">
         <path
@@ -92,56 +92,12 @@ const menuItems: MenuItem[] = [
   },
 ];
 
-const UserPanel: React.FC<UserPanelProps> = ({ activePanel, setActivePanel }) => {
+// UserPanelProps
+function UserPanel({ activePanel, setActivePanel }: UserPanelProps){
   const navigate = useNavigate();
   const { width } = useWindowSize();
-
-  const [displayUsername, setDisplayUsername] = useState<string>("کاربر سیستم");
-
-  // ✅ احراز هویت اولیه و دریافت یوزرنیم
-  useEffect(() => {
-    const verify = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) throw new Error("no token");
-        const res = await fetch("http://localhost:4000/login/user-info", {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error("unauthorized");
-        const data = await res.json();
-        // فرض: data = { username, userType }
-        if (data?.username) setDisplayUsername(data.username);
-      } catch {
-        navigate("/login");
-      }
-    };
-    verify();
-  }, [navigate]);
-
-const { setUserName, setIsUserLogin, setToken, setUserType } = useContext(publicContext)!;
-
-const logout = () => {
-  try {
-    // 1) پاک‌سازی استور محلی
-    localStorage.removeItem("userName");
-    localStorage.removeItem("isUserLogin");
-    localStorage.removeItem("token");
-    localStorage.removeItem("userType");
-
-    // 2) پاک‌سازی context برای جلوگیری از ریدایرکت‌های ناخواسته
-    setUserName("");
-    setIsUserLogin(false);
-    setToken("");
-    setUserType(undefined as any);
-
-    // 3) هدایت بدون امکان بازگشت
-    navigate("/login", { replace: true });
-  } catch (e) {
-    console.error("خطا در خروج:", e);
-  }
-};
- 
+  const { userName, logout } = useAuth();
+  // احراز هویت اولیه و دریافت یوزرنیم لازم نیست
   const handleKeyDown = (e: React.KeyboardEvent, callback: () => void): void => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -192,7 +148,7 @@ const logout = () => {
 
   const containerClasses =
     width >= 1024
-      ? "col-span-3 h-full bg-gradient-to-b from-slate-800 via-slate-900 to-slate-800 shadow-2xl h-screen"
+      ? "col-span-3 bg-gradient-to-b from-slate-800 via-slate-900 to-slate-800 shadow-2xl h-screen sticky top-0 right-0 "
       : "col-span-12 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl shadow-xl mx-2 md:mx-4 ";
 
   return (
@@ -211,7 +167,7 @@ const logout = () => {
           </div>
           <div className="flex gap-2 items-center">
             <h2 className="text-lg font-bold text-white">پنل کاربری</h2>
-            <p className="text-xs text-gray-400">{displayUsername}</p>
+            <p className="text-xs text-gray-400">{userName}</p>
           </div>
         </div>
       </div>

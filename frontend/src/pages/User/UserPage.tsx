@@ -1,22 +1,15 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import UserPanel from "../../components/UserPanel";
-import Information from "../User/Information";
-import MyCourse from "../User/MyCourse";
-import MyRequestedCourse from "../User/MyRequestedCourse";
-import CourseReq from "../User/CourseReq";
-import Messages from "../User/Messages";
+import Information from "./Information";
+import MyCourse from "./MyCourse";
+import MyRequestedCourse from "./MyRequestedCourse";
+import CourseReq from "./CourseReq";
+import Messages from "./Messages";
 
-const UserPage: React.FC = () => {
+function UserPage(){
   const [activePanel, setActivePanel] = useState("information");
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (localStorage.getItem("isUserLogin") === "") {
-      navigate("../login");
-    }
-  }, [navigate]);
-
+  // useEffect
+  // حذف شد چون بررسی نقش اصلا لازم نیست و توسط مسیرهای کنترلی بررسی می‌شه 
   return (
     <div className="adminPage flex flex-col w-full">
       <section className="grid grid-cols-12 px-6">
@@ -27,6 +20,7 @@ const UserPage: React.FC = () => {
           {activePanel === "MyRequestedCourse" && <MyRequestedCourse />}
           {activePanel === "RequestCourse" && <CourseReq />}
           {activePanel === "ViewMessages" && <Messages />}
+          
         </div>
       </section>
     </div>

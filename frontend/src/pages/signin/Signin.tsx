@@ -4,13 +4,13 @@ import Input from "../../components/Input";
 import { Link, useNavigate } from "react-router-dom";
 import Button from "../../components/Button";
 import useWindowSize from "../../hooks/useWindowSize";
-import axios from "axios";
+import { iamApi } from "../../lib/api";
 import type {
   otpResponse,
   LoginResponse,
   SampleFormResult,
 } from "../../types/publicTypes";
-import { publicContext } from "../../App";
+import { useAuth } from "../../context/AuthContext";
 
 // context for signin page
 const signinContext = createContext<SigninContext>(undefined);
@@ -77,10 +77,9 @@ function SigninForm() {
   };
 
   const signinHandler = () => {
-    axios
-      .post("http://localhost:4000/sign-up", userInf)
-      .then((response) => {
-        console.log(response);
+    iamApi
+      .post("/sign-up", userInf)
+      .then(() => {
         context?.setIsOtpTime(true);
 
         context?.setMail(userInf.mail);
@@ -125,7 +124,7 @@ function SigninForm() {
             name="first_name"
             type="text"
             label="نام"
-            pHolder=""
+            placeholder="محمد "
             id="1"
             onChange={userInfHandler}
             inpClass={`w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-all duration-300 ${signinPageInputsClass}`}
@@ -137,7 +136,7 @@ function SigninForm() {
             name="last_name"
             type="text"
             label="نام خانوادگی"
-            pHolder=""
+            placeholder="محمدی"
             id="2"
             onChange={userInfHandler}
             inpClass={`w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-all duration-300 ${signinPageInputsClass}`}
@@ -149,7 +148,7 @@ function SigninForm() {
             name="mail"
             type="email"
             label="پست الکترونیکی"
-            pHolder=""
+            placeholder="mohammad_mohammadi@gmail.com"
             id="3"
             onChange={userInfHandler}
             inpClass={`w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-all duration-300 ${signinPageInputsClass}`}
@@ -161,7 +160,7 @@ function SigninForm() {
             name="username"
             type="text"
             label="نام کاربری"
-            pHolder=""
+            placeholder="کیارش ابراهیم نژاد"
             description=""
             id="4"
             onChange={userInfHandler}
@@ -204,7 +203,7 @@ function SigninForm() {
             name="password"
             type="password"
             label="رمز عبور"
-            pHolder="••••••••••••"
+            placeholder="mOHam_d@1330"
             description="لطفا رمز عبور خود را انتخاب نمایید."
             id="6"
             onChange={userInfHandler}
@@ -217,7 +216,7 @@ function SigninForm() {
             name="rPassword"
             type="password"
             label="تکرار رمز عبور"
-            pHolder="••••••••••••"
+            placeholder="رمز عبور قبلی را تکرار کنید"
             id="7"
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               setRptPass(e.target.value);
@@ -301,7 +300,7 @@ function SigninForm() {
 
 function OtpForm({ user }: { user: UserInfo }) {
   const context = useContext(signinContext);
-  const pContext = useContext(publicContext);
+  const { login } = useAuth();
 
   const navigate = useNavigate();
 
@@ -327,10 +326,9 @@ function OtpForm({ user }: { user: UserInfo }) {
   };
 
   const otpHandler = () => {
-    axios
-      .post<otpResponse>("http://localhost:4000/sign-up/verify-otp", otpReq)
-      .then((response) => {
-        response;
+    iamApi
+      .post<otpResponse>("/sign-up/verify-otp", otpReq)
+      .then(() => {
         setOtpResult({
           message: "موفقیت",
           show: true,
@@ -338,22 +336,14 @@ function OtpForm({ user }: { user: UserInfo }) {
         });
 
         setTimeout(() => {
-          axios
-            .post<LoginResponse>("http://localhost:4000/login", user)
+          iamApi
+            .post<LoginResponse>("/login", user)
             .then((response) => {
-              response;
-              // localStorage.setItem('userName', user.username);
-              pContext?.setUserName(user.username);
-              // localStorage.setItem('isUserLogin', 'y');
-              pContext?.setIsUserLogin(true);
-              localStorage.setItem("token", response.data.token);
-              pContext?.setToken(response.data.token);
-              // localStorage.setItem('userType', response.data.userType);
-              pContext?.setUserType(response.data.token); // ممکنه اینجا باید userType باشه، نه token
+              const { token, userType } = response.data;
+              login({ username: user.username, token, userType });
               navigate("/user/course");
             })
-            .catch((err) => {
-              err;
+            .catch(() => {
               setOtpResult({
                 message:
                   "ثبت‌نام انجام شد! اما در ورود مشکلی پیش آمده. لطفا از طریق صفحه ورود اقدام کنید.",
@@ -363,8 +353,7 @@ function OtpForm({ user }: { user: UserInfo }) {
             });
         }, 2000);
       })
-      .catch((err) => {
-        console.log(err);
+      .catch(() => {
         setOtpResult({
           message: "خطایی رخ داده!",
           show: true,
@@ -390,7 +379,7 @@ function OtpForm({ user }: { user: UserInfo }) {
             description="کد ارسال شده به ایمیل خود رو وارد کنید."
             id="1"
             label=""
-            pHolder="23453"
+            placeholder="23453"
             onChange={otpReqHandler}
             type="number"
             divClass="mx-20"
@@ -439,7 +428,7 @@ function OtpForm({ user }: { user: UserInfo }) {
           description="کد ارسال شده به ایمیل خود رو وارد کنید."
           id="1"
           label=""
-          pHolder="23453"
+          placeholder="23453"
           onChange={otpReqHandler}
           type="number"
           divClass="col-span-12 lg:hidden mx-7 mt-5"
