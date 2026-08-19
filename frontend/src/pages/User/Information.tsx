@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import useWindowSize from "../../hooks/useWindowSize";
+import { coreApi, isAxiosErrorWithMessage } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
+import LoadingSpinner from "../../components/LoadingSpinner";
+import Input from "../../components/Input";
 
 interface UserData {
   username: string;
@@ -19,9 +22,9 @@ interface Toast {
   id: number;
 }
 
-const Information: React.FC = () => {
+function Information(){
   const { width } = useWindowSize();
-  const navigate = useNavigate();
+  const { refreshSession } = useAuth();
   const [userData, setUserData] = useState<UserData>({
     username: "",
     first_name: "",
@@ -58,38 +61,19 @@ const Information: React.FC = () => {
   ];
 
   useEffect(() => {
-    if (localStorage.getItem("isUserLogin") === "") {
-      navigate("../login");
-    }
-  }, [navigate]);
-
-  useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const response = await fetch("http://localhost:5000/user/get-user", {
-          method: "GET",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error("خطا در دریافت اطلاعات");
-        }
-
-        const data = await response.json();
+        const { data } = await coreApi.get<UserData>("/user/get-user");
         const processedData = {
           ...data,
           father_name: data.father_name || "",
           student_id: data.student_id || "",
           phone: data.phone || ""
         };
-        
+
         setUserData(processedData);
         setOriginalData(processedData);
-      } catch (error) {
+      } catch {
         showToast("خطا در دریافت اطلاعات کاربری", "error");
       } finally {
         setLoading(false);
@@ -130,32 +114,32 @@ const Information: React.FC = () => {
   };
 
    const handleUpdateUser = async () => {
+    if (userData.username !== originalData.username) {
+      const confirmed = window.confirm(
+        "شما در حال تغییر نام کاربری هستید. این تغییر روی کل حساب شما (دوره‌ها، پیام‌ها، نمرات) اثر می‌گذارد. مطمئن هستید؟"
+      );
+      if (!confirmed) return;
+    }
+
     setUpdating(true);
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch("http://localhost:5000/user/update-user", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userData),
-      });
+      const { data: result } = await coreApi.post<{ message: string; token?: string }>(
+        "/user/update-user",
+        userData
+      );
 
-      const result: { message: string; token?: string } = await response.json();
-
-      if (response.ok) {
-        // اگر توکن جدید دریافت شد، در localStorage ذخیره کن
-        if (result.token) {
-          localStorage.setItem("token", result.token);
-        }
-        setOriginalData(userData);            // دادهٔ مرجع جدید
-        showToast(result.message, "success"); // فقط پیام را نشان بده
-      } else {
-        showToast(result.message, "error");
+      // اگر توکن جدید دریافت شد (تغییر نام‌کاربری)، در localStorage ذخیره و AuthContext را هم‌گام کن
+      if (result.token) {
+        localStorage.setItem("token", result.token);
+        await refreshSession();
       }
-    } catch {
-      showToast("خطا در به‌روزرسانی اطلاعات", "error");
+      setOriginalData(userData);            // دادهٔ مرجع جدید
+      showToast(result.message, "success");
+    } catch (e) {
+      const message = isAxiosErrorWithMessage(e) && e.response?.data?.message
+        ? e.response.data.message
+        : "خطا در به‌روزرسانی اطلاعات";
+      showToast(message, "error");
     } finally {
       setUpdating(false);
     }
@@ -163,11 +147,7 @@ const Information: React.FC = () => {
 
   if (loading) {
     return (
-      <section className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 px-4 sm:px-6 lg:px-8 w-full">
-        <div className="flex justify-center items-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-      </section>
+      <LoadingSpinner />
     );
   }
 
@@ -206,56 +186,44 @@ const Information: React.FC = () => {
           <div className="p-6 lg:p-8">
             <div className="grid gap-6 md:grid-cols-2">
               {/* Username */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  نام کاربری
-                </label>
-                <input
-                  type="text"
-                  value={userData.username}
-                  onChange={(e) => handleInputChange('username', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
+              <Input
+                name="username"
+                label="نام کاربری"
+                value={userData.username}
+                onChange={(e) => handleInputChange('username', e.target.value)}
+                divClass="space-y-2"
+                inpClass="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              />
 
               {/* First Name */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  نام
-                </label>
-                <input
-                  type="text"
-                  value={userData.first_name}
-                  onChange={(e) => handleInputChange('first_name', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
+              <Input
+                name="first_name"
+                label="نام"
+                value={userData.first_name}
+                onChange={(e) => handleInputChange('first_name', e.target.value)}
+                divClass="space-y-2"
+                inpClass="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              />
 
               {/* Last Name */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  نام خانوادگی
-                </label>
-                <input
-                  type="text"
-                  value={userData.last_name}
-                  onChange={(e) => handleInputChange('last_name', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
+              <Input
+                name="last_name"
+                label="نام خانوادگی"
+                value={userData.last_name}
+                onChange={(e) => handleInputChange('last_name', e.target.value)}
+                divClass="space-y-2"
+                inpClass="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              />
 
               {/* Father Name */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  نام پدر
-                </label>
-                <input
-                  type="text"
-                  value={userData.father_name}
-                  onChange={(e) => handleInputChange('father_name', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
+              <Input
+                name="father_name"
+                label="نام پدر"
+                value={userData.father_name ?? ""}
+                onChange={(e) => handleInputChange('father_name', e.target.value)}
+                divClass="space-y-2"
+                inpClass="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              />
 
               {/* Field */}
               <div className="space-y-2">
@@ -297,43 +265,35 @@ const Information: React.FC = () => {
               </div>
 
               {/* Student ID */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  شماره دانشجویی
-                </label>
-                <input
-                  type="text"
-                  value={userData.student_id!}
-                  onChange={(e) => handleInputChange('student_id', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
+              <Input
+                name="student_id"
+                label="شماره دانشجویی"
+                value={userData.student_id ?? ""}
+                onChange={(e) => handleInputChange('student_id', e.target.value)}
+                divClass="space-y-2"
+                inpClass="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              />
 
               {/* Phone */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  شماره تلفن
-                </label>
-                <input
-                  type="text"
-                  value={userData.phone!}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
+              <Input
+                name="phone"
+                label="شماره تلفن"
+                value={userData.phone ?? ""}
+                onChange={(e) => handleInputChange('phone', e.target.value)}
+                divClass="space-y-2"
+                inpClass="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              />
 
               {/* Email */}
-              <div className="space-y-2 md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  ایمیل
-                </label>
-                <input
-                  type="email"
-                  value={userData.mail}
-                  onChange={(e) => handleInputChange('mail', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
+              <Input
+                name="mail"
+                type="email"
+                label="ایمیل"
+                value={userData.mail}
+                onChange={(e) => handleInputChange('mail', e.target.value)}
+                divClass="space-y-2 md:col-span-2"
+                inpClass="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              />
             </div>
 
             {/* Update Button */}

@@ -18,11 +18,9 @@ Thumbs.db
 
 *.pdf
 !**/*_report.pdf
-*.md
-!**/README.md
+
 frontend/**/db.json
 
-CLAUDE.md
-.cloude/
-
 **/*.zip
+
+msg.txt

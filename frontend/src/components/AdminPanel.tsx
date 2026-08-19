@@ -1,6 +1,6 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import useWindowSize from "../hooks/useWindowSize";
+import { useAuth } from '../context/AuthContext';
 
 interface AdminPanelProps {
     activePanel: string;
@@ -10,7 +10,7 @@ interface AdminPanelProps {
 interface MenuItem {
     key: string;
     label: string;
-    path: string;
+    path?: string;
     icon: React.ReactNode;
 }
 
@@ -18,7 +18,7 @@ const menuItems: MenuItem[] = [
     {
         key: 'courseRequests',
         label: 'درخواست دوره',
-        path: '/admin/courseRequests',
+        /* path: '/admin/courseRequests', */
         icon: (
             <svg className="w-5 h-5 ml-3" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.84L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.84l-7-3z" />
@@ -29,7 +29,7 @@ const menuItems: MenuItem[] = [
     {
         key: 'examRequests',
         label: 'درخواست آزمون',
-        path: '/admin/course',
+        // path: '/admin/course',
         icon: (
             <svg className="w-5 h-5 ml-3" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2H6zm1 2a1 1 0 000 2h6a1 1 0 100-2H7zm6 7a1 1 0 011 1v3a1 1 0 11-2 0v-3a1 1 0 011-1zm-3 3a1 1 0 100 2h.01a1 1 0 100-2H10zm-4 1a1 1 0 011-1h.01a1 1 0 110 2H7a1 1 0 01-1-1zm1-4a1 1 0 100 2h.01a1 1 0 100-2H7zm2 0a1 1 0 100 2h.01a1 1 0 100-2H9zm2 0a1 1 0 100 2h.01a1 1 0 100-2H11z" clipRule="evenodd" />
@@ -39,7 +39,7 @@ const menuItems: MenuItem[] = [
     {
         key: 'comments',
         label: 'بررسی کامنت ها',
-        path: '/admin/course_request',
+        // path: '/admin/course_request',
         icon: (
             <svg className="w-5 h-5 ml-3" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
@@ -48,24 +48,11 @@ const menuItems: MenuItem[] = [
     },
 ];
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ activePanel, setActivePanel }) => {
-    const navigate = useNavigate();
+function AdminPanel({ activePanel, setActivePanel } : AdminPanelProps){
     const { width } = useWindowSize();
+    const { logout } = useAuth();
 
-    const logout = async (): Promise<void> => {
-        try {
-            // پاک کردن اطلاعات کاربر از localStorage
-            localStorage.removeItem('userName');
-            localStorage.removeItem('isUserLogin');
-            localStorage.removeItem('token');
-            localStorage.removeItem('userType');
-
-            // هدایت به صفحه ورود
-            navigate('/login');
-        } catch (error) {
-            console.error('خطا در خروج از حساب کاربری:', error);
-        }
-    };
+    
 
     const handleKeyDown = (e: React.KeyboardEvent, callback: () => void): void => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -118,7 +105,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ activePanel, setActivePanel }) 
     };
 
     const containerClasses = width >= 1024
-        ? "col-span-3 h-full bg-gradient-to-b from-slate-800 via-slate-900 to-slate-800 shadow-2xl"
+        ? "col-span-3 h-screen bg-gradient-to-b from-slate-800 via-slate-900 to-slate-800 shadow-2xl sticky top-0 right-0"
         : "col-span-12 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl shadow-xl mx-2 md:mx-4";
 
     return (
@@ -150,7 +137,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ activePanel, setActivePanel }) 
             </nav>
 
             {/* Logout Button */}
-            <div className=" bottom-0 left-0 right-0 p-4 border-t border-slate-700/50 bg-slate-900/50">
+            <div className="bottom-0 left-0 right-0 p-4 border-t border-slate-700/50 bg-slate-900/50">
                 <button
                     className="w-full flex items-center px-4 py-3 text-sm font-medium text-gray-300 
                              rounded-lg transition-all duration-200 ease-in-out

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import useWindowSize from "../../hooks/useWindowSize";
+import { coreApi, isAxiosErrorWithMessage } from "../../lib/api";
 
 interface ExamRequests {
   id: number;
@@ -24,7 +25,6 @@ const toShamsiDate = (iso: string): string => {
 
 const ExamRequests: React.FC = () => {
   const { width } = useWindowSize();
-  const navigate = useNavigate();
   const [examRequests, setExamRequests] = useState<ExamRequests[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,41 +41,23 @@ const ExamRequests: React.FC = () => {
   });
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  useEffect(() => {
-    if (localStorage.getItem("isUserLogin") === "" || localStorage.getItem("userType") !== "admin") {
-      navigate("../login");
-    }
-  }, [navigate]);
-
-  const getToken = () => localStorage.getItem('token');
-
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const token = getToken();
-      if (!token) {
-        setError('ابتدا وارد شوید');
-        return;
-      }
-      const response = await fetch('http://localhost:5000/admin/exam-message', {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!response.ok) {
-        setError('خطایی رخ داده است');
-        throw new Error('خطا در دریافت درخواست‌ها');
-      }
-      const data = await response.json();
-      // نگاشت پیام‌ها و تبدیل تاریخ
+      const response = await coreApi.get('/admin/exam-message');
+      const data = response.data;
       setExamRequests(
         data.messages.map((m: any) => ({
           ...m,
           date: toShamsiDate(m.date),
         }))
       );
-    } catch (e: any) {
-      setError(e.message);
+    } catch (err) {
+      const message = isAxiosErrorWithMessage(err) && err.response?.data?.message
+        ? err.response.data.message
+        : 'خطایی رخ داده است';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -91,25 +73,18 @@ const ExamRequests: React.FC = () => {
       return;
     }
     try {
-      const token = getToken();
-      if (!token) throw new Error('ابتدا وارد شوید');
-      const response = await fetch('http://localhost:5000/admin/invalid-exam', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          eid: deleteModal.examId,
-          message: deleteModal.message.trim(),
-        }),
+      await coreApi.post('/admin/invalid-exam', {
+        eid: deleteModal.examId,
+        message: deleteModal.message.trim(),
       });
-      if (!response.ok) throw new Error('خطا در حذف درخواست');
       showNotification('درخواست با موفقیت حذف شد', 'success');
       setDeleteModal({ open: false, examId: null, message: '' });
       fetchData();
     } catch (err) {
-      showNotification(err instanceof Error ? err.message : 'خطایی رخ داد', 'error');
+      const message = isAxiosErrorWithMessage(err) && err.response?.data?.message
+        ? err.response.data.message
+        : 'خطایی رخ داد';
+      showNotification(message, 'error');
     }
   };
 
@@ -119,25 +94,18 @@ const ExamRequests: React.FC = () => {
       return;
     }
     try {
-      const token = getToken();
-      if (!token) throw new Error('ابتدا وارد شوید');
-      const response = await fetch('http://localhost:5000/admin/validate-exam', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          examId: approveModal.examId,
-          message: approveModal.message.trim(),
-        }),
+      await coreApi.post('/admin/validate-exam', {
+        examId: approveModal.examId,
+        message: approveModal.message.trim(),
       });
-      if (!response.ok) throw new Error('خطا در تایید درخواست');
       showNotification('درخواست با موفقیت تایید شد', 'success');
       setApproveModal({ open: false, examId: null, message: '' });
       fetchData();
     } catch (err) {
-      showNotification(err instanceof Error ? err.message : 'خطایی رخ داد', 'error');
+      const message = isAxiosErrorWithMessage(err) && err.response?.data?.message
+        ? err.response.data.message
+        : 'خطایی رخ داد';
+      showNotification(message, 'error');
     }
   };
 

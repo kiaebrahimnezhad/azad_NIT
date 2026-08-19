@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import useWindowSize from "../../hooks/useWindowSize";
+import LoadingSpinner from '../../components/LoadingSpinner';
+import { coreApi, isAxiosErrorWithMessage } from '../../lib/api';
 
 interface CommentReport {
   id: number;
@@ -18,9 +19,8 @@ interface Comment {
   replied_to?: number;
 }
 
-const CommentReports: React.FC = () => {
+function CommentReports(){
   const { width } = useWindowSize();
-  const navigate = useNavigate();
 
   const [requests, setRequests] = useState<CommentReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,8 +63,6 @@ const CommentReports: React.FC = () => {
     type: 'success' | 'error';
   } | null>(null);
 
-  const getToken = () => localStorage.getItem('token');
-
   // تبدیل ISO date به تاریخ شمسی (yyyy/mm/dd)
   const toShamsiDate = (iso: string): string => {
     const dt = new Date(iso);
@@ -74,34 +72,13 @@ const CommentReports: React.FC = () => {
       day: '2-digit'
     }).format(dt);
   };
-
-  useEffect(() => {
-    if (
-      localStorage.getItem('isUserLogin') === '' ||
-      localStorage.getItem('userType') !== 'admin'
-    ) {
-      navigate('../login');
-    }
-  }, [navigate]);
-
+  // نیازی به افکت تایید هویت ندارد
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const token = getToken();
-      if (!token) {
-        setError('ابتدا وارد شوید');
-        return;
-      }
-      const response = await fetch('http://localhost:5000/admin/comment-message', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) throw new Error('خطا در دریافت گزارش‌ها');
-      const data = await response.json();
+      const response = await coreApi.get('/admin/comment-message');
+      const data = response.data;
       setRequests(
         (data.messages ?? []).map((m: any) => ({
           id: m.id,
@@ -112,7 +89,10 @@ const CommentReports: React.FC = () => {
         }))
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'خطایی رخ داده است');
+      const message = isAxiosErrorWithMessage(err) && err.response?.data?.message
+        ? err.response.data.message
+        : 'خطایی رخ داده است';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -126,31 +106,22 @@ const CommentReports: React.FC = () => {
    
     setCommentModal({ open: true, comment: null, loading: true, error: null });
     try {
-      const token = getToken();
-      if (!token) throw new Error('ابتدا وارد شوید');
-      const response = await fetch('http://localhost:5000/admin/get-message', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ commentId }),
-      });
-      if (!response.ok) throw new Error('خطا در دریافت نظر');
-      const commentData = await response.json();
-      console.table(commentData);
+      const response = await coreApi.post('/admin/get-message', { commentId });
       setCommentModal({
         open: true,
-        comment: commentData,
+        comment: response.data,
         loading: false,
         error: null,
       });
     } catch (err) {
+      const message = isAxiosErrorWithMessage(err) && err.response?.data?.message
+        ? err.response.data.message
+        : 'خطایی رخ داد';
       setCommentModal({
         open: true,
         comment: null,
         loading: false,
-        error: err instanceof Error ? err.message : 'خطایی رخ داد',
+        error: message,
       });
     }
   };
@@ -161,26 +132,19 @@ const CommentReports: React.FC = () => {
       return;
     }
     try {
-      const token = getToken();
-      if (!token) throw new Error('ابتدا وارد شوید');
-      const response = await fetch('http://localhost:5000/admin/mannage-comment', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          commentId: deleteModal.commentId,
-          message: deleteModal.message.trim(),
-          toDelete: true,
-        }),
+      await coreApi.post('/admin/mannage-comment', {
+        commentId: deleteModal.commentId,
+        message: deleteModal.message.trim(),
+        toDelete: true,
       });
-      if (!response.ok) throw new Error('خطا در حذف نظر');
       showNotification('نظر با موفقیت حذف شد', 'success');
       setDeleteModal({ open: false, commentId: null, message: '' });
       loadData();
     } catch (err) {
-      showNotification(err instanceof Error ? err.message : 'خطایی رخ داد', 'error');
+      const message = isAxiosErrorWithMessage(err) && err.response?.data?.message
+        ? err.response.data.message
+        : 'خطایی رخ داد';
+      showNotification(message, 'error');
     }
   };
 
@@ -190,26 +154,19 @@ const CommentReports: React.FC = () => {
       return;
     }
     try {
-      const token = getToken();
-      if (!token) throw new Error('ابتدا وارد شوید');
-      const response = await fetch('http://localhost:5000/admin/mannage-comment', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          commentId: approveModal.commentId,
-          message: approveModal.message.trim(),
-          toDelete: false,
-        }),
+      await coreApi.post('/admin/mannage-comment', {
+        commentId: approveModal.commentId,
+        message: approveModal.message.trim(),
+        toDelete: false,
       });
-      if (!response.ok) throw new Error('خطا در تایید نظر');
       showNotification('نظر با موفقیت تایید شد', 'success');
       setApproveModal({ open: false, commentId: null, message: '' });
       loadData();
     } catch (err) {
-      showNotification(err instanceof Error ? err.message : 'خطایی رخ داد', 'error');
+      const message = isAxiosErrorWithMessage(err) && err.response?.data?.message
+        ? err.response.data.message
+        : 'خطایی رخ داد';
+      showNotification(message, 'error');
     }
   };
 
@@ -244,10 +201,7 @@ const CommentReports: React.FC = () => {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
               {loading ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <div className="loading-spinner mb-4"></div>
-                  <p className="text-gray-600 text-lg">در حال بارگذاری...</p>
-                </div>
+                <LoadingSpinner />
               ) : error ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
@@ -458,7 +412,38 @@ const CommentReports: React.FC = () => {
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50" onClick={() => setDeleteModal({ open: false, commentId: null, message: '' })}>
               <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white" onClick={e => e.stopPropagation()}>
                 <div className="mt-3">
-                  {/* ... ورودی متن و دکمه‌ها ... */}
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-medium text-gray-900">رد نظر</h3>
+                    <button onClick={() => setDeleteModal({ open: false, commentId: null, message: '' })} className="text-gray-400 hover:text-gray-600">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <p className="text-gray-700 mb-4">
+                    شما در حال رد و حذف نظر گزارش داده شده هستید
+                  </p>
+                  <textarea
+                    value={deleteModal.message}
+                    onChange={(e) => setDeleteModal({ ...deleteModal, message: e.target.value })}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    rows={4}
+                    placeholder="پیغام مربوطه را برای کاربر بنویسید"
+                  />
+                  <div className="flex justify-end space-x-4 space-x-reverse mt-6">
+                    <button
+                      onClick={() => setDeleteModal({ open: false, commentId: null, message: '' })}
+                      className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                    >
+                      انصراف
+                    </button>
+                    <button
+                      onClick={confirmDelete}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      ارسال
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -469,7 +454,38 @@ const CommentReports: React.FC = () => {
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50" onClick={() => setApproveModal({ open: false, commentId: null, message: '' })}>
               <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white" onClick={e => e.stopPropagation()}>
                 <div className="mt-3">
-                  {/* ... ورودی متن و دکمه‌ها ... */}
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-medium text-gray-900">تایید نظر</h3>
+                    <button onClick={() => setApproveModal({ open: false, commentId: null, message: '' })} className="text-gray-400 hover:text-gray-600">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <p className="text-gray-700 mb-4">
+                    شما در حال تایید نظر گزارش داده شده هستید
+                  </p>
+                  <textarea
+                    value={approveModal.message}
+                    onChange={(e) => setApproveModal({ ...approveModal, message: e.target.value })}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    rows={4}
+                    placeholder="پیغام مربوطه را برای کاربر بنویسید"
+                  />
+                  <div className="flex justify-end space-x-4 space-x-reverse mt-6">
+                    <button
+                      onClick={() => setApproveModal({ open: false, commentId: null, message: '' })}
+                      className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                    >
+                      انصراف
+                    </button>
+                    <button
+                      onClick={confirmApprove}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      ارسال
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

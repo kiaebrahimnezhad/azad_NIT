@@ -1,21 +1,15 @@
 
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import AdminPanel from "../../components/AdminPanel";
 import CourseRequests from "./CourseRequests";
 import ExamRequests from "./ExamRequests";
 import CommentRequests from "./CommentReports";
 
-
-const AdminPage: React.FC = () => {
+function AdminPage(){
   const [activePanel, setActivePanel] = useState("courseRequests");
-  const navigate = useNavigate();
-  useEffect(() => {
-    if (localStorage.getItem("isUserLogin") === "") {
-      navigate("../login");
-    }
-  }, [navigate]);
-
+ // یادآوری آموزشی برای خودم
+ // useEffect
+ // حذف شد چون بررسی نقش اصلا لازم نیست و توسط مسیرهای کنترلی بررسی می‌شه 
   return (
     <div className="adminPage  flex flex-col w-full">
       <section className="grid grid-cols-12 px-6">
@@ -25,9 +19,7 @@ const AdminPage: React.FC = () => {
           {activePanel === "courseRequests" && <CourseRequests />}
           {activePanel === "examRequests" && <ExamRequests />}
           {activePanel === "comments" && <CommentRequests />}
-
         </div>
-
       </section>
     </div>
   )

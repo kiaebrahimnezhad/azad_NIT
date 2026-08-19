@@ -30,6 +30,9 @@ const SelectOptions: React.FC<SelectOptionsProps> = ({
       className={`block ${selClass}`}
       onChange={onChange}
     >
+      <option value="" disabled>
+         انتخاب
+      </option>
       {options.map((opt, idx) => (
         <option key={idx} value={opt}>
           {opt}

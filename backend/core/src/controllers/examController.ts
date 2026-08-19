@@ -275,8 +275,8 @@ export const validateExamControll = async (req: Request, res: Response) => {
     }
 
     // 2) Update exam's is_valid field
-    const updatedExam = await prisma.course.update({
-      where: { cid: parseInt(examId) },
+    const updatedExam = await prisma.exam.update({
+      where: { eid: parseInt(examId) },
       data: {
         is_valid: true,
       },

@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import useWindowSize from "../../hooks/useWindowSize";
+import { coreApi, userSafeErrorMessage } from "../../lib/api";
+import RequestedCourseCard from "../../components/RequestedCourseCard";
 
-type RequestedCourse = {
+export type RequestedCourse = {
   cid: number;
   description: string;
   start_time: string;      // ISO
@@ -25,8 +27,6 @@ type ApiResponse = {
   message?: string;
 };
 
-const API_BASE = "http://localhost:5000";
-
 const MyRequestedCourse: React.FC = () => {
   const { width } = useWindowSize();
   const navigate = useNavigate();
@@ -39,45 +39,19 @@ const MyRequestedCourse: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-          setError("ابتدا وارد شوید");
-          setLoading(false);
-          return;
-        }
-        const res = await fetch(`${API_BASE}/user/overview`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const json: ApiResponse = await res.json();
-        if (!res.ok || !json.success) {
+        const { data: json } = await coreApi.get<ApiResponse>("/user/overview");
+        if (!json.success) {
           throw new Error(json.message || "خطا در دریافت اطلاعات");
         }
         setRequestedCourses(json.data?.requestedCourses || []);
-        console.log(json.data?.requestedCourses);
-      } catch (e:any) {
-        setError(e?.message || "خطا در دریافت اطلاعات");
+      } catch (e) {
+        setError(userSafeErrorMessage(e, "خطا در دریافت اطلاعات"));
       } finally {
         setLoading(false);
       }
     };
     fetchData();
   }, []);
-
-  const formatDate = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleDateString("fa-IR", { year:"numeric", month:"2-digit", day:"2-digit" });
-    } catch {
-      return "-";
-    }
-  };
-
-  const courseImageUrl = (raw?: string | null) => {
-    if (!raw) return "";
-    // مسیر تصویر نسبت به ریشه‌ی سرور بکند
-    const clean = raw.replace(/\\/g, "/").replace(/^\.?\/*/, "");
-    return `${API_BASE}/${clean}`;
-  };
 
   const goCourse = (cid: number) => navigate(`/course/${cid}`);
   const goCreateExam = (cid: number) => navigate(`/createxam/${cid}`);
@@ -139,79 +113,13 @@ const MyRequestedCourse: React.FC = () => {
             ) : (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {requestedCourses.map((c) => (
-                  <div
+                  <RequestedCourseCard
                     key={c.cid}
-                    className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
-                  >
-                    {c.image ? (
-                      <div className="h-40 w-full bg-gray-50 overflow-hidden">
-                        <img
-                          src={courseImageUrl(c.image)}
-                          alt={c.name}
-                          className="w-full h-full object-cover"
-                          onError={(e)=>{(e.currentTarget as HTMLImageElement).style.display='none';}}
-                        />
-                      </div>
-                    ) : null}
-                    <div className="p-6">
-                      <div className="flex items-start justify-between mb-3">
-                        <h3 className="text-lg font-semibold text-gray-900 line-clamp-2">{c.name}</h3>
-                        <span className={`text-xs px-2 py-1 rounded-full ${c.is_valid ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                          {c.is_valid ? "تأیید شده" : "در انتظار تأیید"}
-                        </span>
-                      </div>
-
-                      <p className="text-sm text-gray-600 mb-4 line-clamp-3">{c.description}</p>
-
-                      <div className="space-y-2 mb-5 text-sm text-gray-700">
-                        <div className="flex items-center">
-                          <span className="font-medium ml-1">رشته ۱:</span><span>{c.field1}</span>
-                        </div>
-                        {c.field2 ? (
-                          <div className="flex items-center">
-                            <span className="font-medium ml-1">رشته ۲:</span><span>{c.field2}</span>
-                          </div>
-                        ) : null}
-                        <div className="flex items-center">
-                          <span className="font-medium ml-1">شروع دوره:</span><span>{formatDate(c.start_time)}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <span className="font-medium ml-1">پایان دوره:</span><span>{formatDate(c.end_time)}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <span className="font-medium ml-1">شروع ثبت‌نام:</span><span>{formatDate(c.start_sign_up)}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <span className="font-medium ml-1">پایان ثبت‌نام:</span><span>{formatDate(c.end_sign_up)}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <span className="font-medium ml-1">شهریه:</span>
-                          <span>{new Intl.NumberFormat("fa-IR").format(c.price)} تومان</span>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <button
-                          disabled={!c.is_valid}
-                          onClick={() => c.is_valid ? goCourse(c.cid) : showToast("این دوره هنوز تأیید نشده است", "error")}
-                          className={`flex-1 text-center py-2.5 px-4 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2
-                            ${c.is_valid
-                              ? "bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500"
-                              : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                            }`}
-                        >
-                          مشاهده دوره
-                        </button>
-
-                        <button
-                          onClick={() => goCreateExam(c.cid)}
-                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-                        >
-                          افزودن آزمون
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                    course={c}
+                    onView={goCourse}
+                    onCreateExam={goCreateExam}
+                    onInvalidView={() => showToast("این دوره هنوز تأیید نشده است", "error")}
+                  />
                 ))}
               </div>
             )}
