@@ -43,6 +43,17 @@ model Shop {
   @@id([username, cid])
 }
 
+// یک تراکنش زرین‌پالِ verify-شده رو ثبت می‌کنه تا اگر rollBack دوباره با همون
+// authority صدا زده بشه (مثلاً رفرش کردن صفحه‌ی نتیجه‌ی پرداخت)، به‌جای verify
+// دوباره از زرین‌پال (که برای authority تکراری کد موفقیت متفاوتی برمی‌گردونه)،
+// همون نتیجه‌ی قبلی برگردونده بشه.
+model Payment {
+  authority  String   @id
+  username   String
+  ref_id     String?
+  created_at DateTime @default(now())
+}
+
 model Answer {
   username String
   qid      Int

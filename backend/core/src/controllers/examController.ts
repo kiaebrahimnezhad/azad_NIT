@@ -48,6 +48,7 @@ export const createOrUpdateExam = async (req: Request, res: Response) => {
   const token = req.headers["authorization"]?.split(" ")[1];
   if (!token) {
     res.status(401).json({ message: "Token not provided" });
+    return;
   }
 
   try {
@@ -91,6 +92,7 @@ export const createOrUpdateExam = async (req: Request, res: Response) => {
       questions.length === 0
     ) {
       res.status(400).json({ message: "Required fields are missing" });
+      return;
     }
 
     /* 4) Validate each question -------------------- */
@@ -106,11 +108,13 @@ export const createOrUpdateExam = async (req: Request, res: Response) => {
         res
           .status(400)
           .json({ message: `Question ${i + 1}: At least two options must be filled` });
+        return;
       }
       if (q.ans < 1 || q.ans > 5) {
         res
           .status(400)
           .json({ message: `Question ${i + 1}: ans must be between 1 and 5` });
+        return;
       }
     }
 
@@ -122,6 +126,7 @@ export const createOrUpdateExam = async (req: Request, res: Response) => {
       res.status(403).json({
         message: "Only the course requester can create or edit exams",
       });
+      return;
     }
 
     let createdOrUpdatedExamId: number;
@@ -164,6 +169,7 @@ export const createOrUpdateExam = async (req: Request, res: Response) => {
         res
           .status(400)
           .json({ message: "Provided cid doesn't match the existing exam" });
+        return;
       }
 
       await prisma.exam.update({
@@ -201,6 +207,7 @@ export const createOrUpdateExam = async (req: Request, res: Response) => {
     });
     if (admins.length === 0) {
       res.status(500).json({ message: "No admins found" });
+      return;
     }
     // Calculate rotating index
     adminCounter = adminCounter % admins.length;
@@ -235,7 +242,7 @@ export const createOrUpdateExam = async (req: Request, res: Response) => {
 };
 
 export const validateExamControll = async (req: Request, res: Response) => {
-  const { examId } = req.body; // Get exam ID from request body
+  const { examId, message } = req.body; // Get exam ID + admin's approval message from request body
   const token = req.headers["authorization"]?.split(" ")[1]; // Get token from request header
 
   if (!token) {
@@ -255,6 +262,10 @@ export const validateExamControll = async (req: Request, res: Response) => {
 
     if (!examId) {
       res.status(400).json({ message: "exam id not provided" });
+      return;
+    }
+    if (!message) {
+      res.status(400).json({ message: "message field is required" });
       return;
     }
 
@@ -282,12 +293,31 @@ export const validateExamControll = async (req: Request, res: Response) => {
       },
     });
 
+    // Find the original requester (course requester who created this exam) before
+    // deleting the examMessage records, so we can notify them of the approval.
+    const examMessages = await prisma.examMessage.findMany({
+      where: { eid: parseInt(examId) },
+    });
+    const originalSender = examMessages[0]?.sender;
+
     // Delete examMessage records with matching eid
     await prisma.examMessage.deleteMany({
       where: {
         eid: parseInt(examId),
       },
     });
+
+    // Notify the requester with the admin's approval message
+    if (originalSender) {
+      await prisma.message.create({
+        data: {
+          reciver: originalSender,
+          sender: requesterUsername,
+          text: message,
+          date: new Date(),
+        },
+      });
+    }
 
     // 3) Send success response
     res.status(200).json({

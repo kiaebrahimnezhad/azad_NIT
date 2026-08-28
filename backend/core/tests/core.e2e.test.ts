@@ -1,9 +1,12 @@
 import request from 'supertest';
 
 // --- 1) Mock Prisma via singleton BEFORE importing app ---
+// نکته: کلاس‌های خطای واقعی (Prisma.PrismaClientKnownRequestError و ...) هم نگه داشته می‌شن
+// تا کدی که با instanceof این خطاها رو تشخیص می‌ده (مثلاً userManageService.deleteUser) قابل تست باشه.
 jest.mock('@prisma/client', () => {
   const { prismaMock } = require('./prisma-singleton');
-  return { PrismaClient: jest.fn(() => prismaMock) };
+  const actual = jest.requireActual('@prisma/client');
+  return { ...actual, PrismaClient: jest.fn(() => prismaMock) };
 });
 
 // --- 2) Mock axios (IAM + any external requests) ---
@@ -15,6 +18,7 @@ jest.mock('axios', () => ({
 // --- 3) Import app AFTER mocks ---
 import app from '../app'; // ← Update path if different
 import axios from 'axios';
+import { Prisma } from '@prisma/client';
 import { prismaMock } from './prisma-singleton';
 
 describe('CORE E2E', () => {
@@ -152,6 +156,47 @@ describe('CORE E2E', () => {
     expect(res.status).toBe(403);
   });
 
+  test('POST /owner (toDelete) => 403 when target user is an owner', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'o1', userType: 'owner' } });
+    (prismaMock.user.findUnique as any).mockResolvedValue({ username: 'o2' });
+    (prismaMock.owner.findUnique as any).mockResolvedValue({ username: 'o2' });
+
+    const res = await request(app).post('/owner').set(AUTH).send({ username: 'o2', toDelete: true });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.user.delete).not.toHaveBeenCalled();
+  });
+
+  test('POST /owner (toDelete) => 409 when target user has related records (FK constraint)', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'o1', userType: 'owner' } });
+    (prismaMock.user.findUnique as any).mockResolvedValue({ username: 'busyUser' });
+    (prismaMock.owner.findUnique as any).mockResolvedValue(null);
+    (prismaMock.admin.findUnique as any).mockResolvedValue(null);
+    (prismaMock.user.delete as any).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Foreign key constraint failed', {
+        code: 'P2003',
+        clientVersion: '6.3.0',
+      })
+    );
+
+    const res = await request(app).post('/owner').set(AUTH).send({ username: 'busyUser', toDelete: true });
+
+    expect(res.status).toBe(409);
+  });
+
+  test('POST /owner (toDelete) => 200 when deleting a user with no related records', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'o1', userType: 'owner' } });
+    (prismaMock.user.findUnique as any).mockResolvedValue({ username: 'freeUser' });
+    (prismaMock.owner.findUnique as any).mockResolvedValue(null);
+    (prismaMock.admin.findUnique as any).mockResolvedValue(null);
+    (prismaMock.user.delete as any).mockResolvedValue({ username: 'freeUser' });
+
+    const res = await request(app).post('/owner').set(AUTH).send({ username: 'freeUser', toDelete: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('user deleted');
+  });
+
   test('GET /owner/see-all => 200 (owner) + users list with isAdmin', async () => {
     (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'o1', userType: 'owner' } });
     (prismaMock.user.findMany as any).mockResolvedValue([
@@ -169,6 +214,22 @@ describe('CORE E2E', () => {
     expect(u2.isAdmin).toBe(true);
   });
 
+  test('GET /owner/see-all => 401 when no token (does not leak the user list)', async () => {
+    const res = await request(app).get('/owner/see-all');
+
+    expect(res.status).toBe(401);
+    expect(prismaMock.user.findMany).not.toHaveBeenCalled();
+  });
+
+  test('GET /owner/see-all => 403 when caller is not owner (does not leak the user list)', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'x', userType: 'admin' } });
+
+    const res = await request(app).get('/owner/see-all').set(AUTH);
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.user.findMany).not.toHaveBeenCalled();
+  });
+
   test('GET /owner/see-admin => 200 (owner) + message count per admin', async () => {
     (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'o1', userType: 'owner' } });
     (prismaMock.admin.findMany as any).mockResolvedValue([{ username: 'a1' }, { username: 'a2' }]);
@@ -184,6 +245,152 @@ describe('CORE E2E', () => {
     expect(res.body[0]).toHaveProperty('messageNumber');
   });
 
+  // ----------------- Admin/Course APIs -----------------
+  // این API هم پشت صفحه‌ی عمومی جزئیات دوره (CourseDetail.tsx، بدون نیاز به لاگین)
+  // و هم پشت صفحه‌ی بررسی دوره‌های در انتظار تأیید توسط ادمین (WatchCourses.tsx) قرار داره.
+  // پس فقط دوره‌های هنوز تأییدنشده (is_valid=false) باید محافظت بشن.
+
+  test('POST /admin/get-course => 200 (no token needed) for an already-approved course', async () => {
+    (prismaMock.course.findUnique as any).mockResolvedValue({ cid: 3, name: 'Course A', image: 'a.png', is_valid: true });
+    (prismaMock.time.findMany as any).mockResolvedValue([{ day: 'Sat', start_time: 480, end_time: 600 }]);
+
+    const res = await request(app).post('/admin/get-course').send({ cid: 3 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.course).toEqual(expect.objectContaining({ cid: 3 }));
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  test('POST /admin/get-course => 401 when no token, for a not-yet-approved course', async () => {
+    (prismaMock.course.findUnique as any).mockResolvedValue({ cid: 4, name: 'Pending course', is_valid: false });
+
+    const res = await request(app).post('/admin/get-course').send({ cid: 4 });
+
+    expect(res.status).toBe(401);
+    expect(prismaMock.time.findMany).not.toHaveBeenCalled();
+  });
+
+  test('POST /admin/get-course => 403 when caller is a normal user, for a not-yet-approved course', async () => {
+    (prismaMock.course.findUnique as any).mockResolvedValue({ cid: 4, name: 'Pending course', is_valid: false });
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'u1', userType: 'normal' } });
+
+    const res = await request(app).post('/admin/get-course').set(AUTH).send({ cid: 4 });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.time.findMany).not.toHaveBeenCalled();
+  });
+
+  test('POST /admin/get-course => 200 (admin) + course details, for a not-yet-approved course', async () => {
+    (prismaMock.course.findUnique as any).mockResolvedValue({ cid: 4, name: 'Pending course', is_valid: false });
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'a1', userType: 'admin' } });
+    (prismaMock.time.findMany as any).mockResolvedValue([{ day: 'Sat', start_time: 480, end_time: 600 }]);
+
+    const res = await request(app).post('/admin/get-course').set(AUTH).send({ cid: 4 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.course).toEqual(expect.objectContaining({ cid: 4 }));
+    expect(res.body.time).toHaveLength(1);
+  });
+
+  // این API فقط توسط CommentReports.tsx (پنل رسیدگی به گزارش کامنت‌های ادمین) صدا زده
+  // می‌شه، نه صفحه‌ی عمومی کامنت‌ها — پس برخلاف /admin/get-comment، باید فقط ادمین باشه.
+
+  test('POST /admin/get-message => 401 when no token', async () => {
+    const res = await request(app).post('/admin/get-message').send({ commentId: 1 });
+
+    expect(res.status).toBe(401);
+    expect(prismaMock.comment.findUnique).not.toHaveBeenCalled();
+  });
+
+  test('POST /admin/get-message => 403 when caller is not admin', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'o1', userType: 'owner' } });
+
+    const res = await request(app).post('/admin/get-message').set(AUTH).send({ commentId: 1 });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.comment.findUnique).not.toHaveBeenCalled();
+  });
+
+  test('POST /admin/get-message => 200 (admin) + reported comment', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'a1', userType: 'admin' } });
+    (prismaMock.comment.findUnique as any).mockResolvedValue({ id: 5, text: 'reported text' });
+
+    const res = await request(app).post('/admin/get-message').set(AUTH).send({ commentId: 5 });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(expect.objectContaining({ id: 5 }));
+  });
+
+  // ----------------- Approval APIs -----------------
+  // هر دو باید پیام همراهِ تأییدِ ادمین رو (که فرانت اجباری می‌فرسته) واقعاً ذخیره کنن.
+
+  test('POST /admin/validate-course => 400 when message is missing', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'admin1', userType: 'admin' } });
+
+    const res = await request(app).post('/admin/validate-course').set(AUTH).send({ courseId: 7 });
+
+    expect(res.status).toBe(400);
+    expect(prismaMock.course.update).not.toHaveBeenCalled();
+  });
+
+  test('POST /admin/validate-course => 200 + notifies the requester with the approval message', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'admin1', userType: 'admin' } });
+    (prismaMock.course.findUnique as any).mockResolvedValue({ cid: 7, is_valid: false });
+    (prismaMock.course.update as any).mockResolvedValue({ cid: 7, is_valid: true });
+    (prismaMock.courseRequester.findMany as any).mockResolvedValue([{ username: 'reqUser' }]);
+    (prismaMock.teacher.create as any).mockResolvedValue({ username: 'reqUser', cid: 7 });
+    (prismaMock.courseMessage.deleteMany as any).mockResolvedValue({ count: 1 });
+    (prismaMock.message.create as any).mockResolvedValue({ id: 1 });
+
+    const res = await request(app)
+      .post('/admin/validate-course')
+      .set(AUTH)
+      .send({ courseId: 7, message: 'دوره خوبی بود، تایید شد' });
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.message.create).toHaveBeenCalledWith({
+      data: {
+        reciver: 'reqUser',
+        sender: 'admin1',
+        text: 'دوره خوبی بود، تایید شد',
+        date: expect.any(Date),
+      },
+    });
+  });
+
+  test('POST /admin/validate-exam => 400 when message is missing', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'admin1', userType: 'admin' } });
+
+    const res = await request(app).post('/admin/validate-exam').set(AUTH).send({ examId: 9 });
+
+    expect(res.status).toBe(400);
+    expect(prismaMock.exam.update).not.toHaveBeenCalled();
+  });
+
+  test('POST /admin/validate-exam => 200 + notifies the requester with the approval message', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'admin1', userType: 'admin' } });
+    (prismaMock.exam.findUnique as any).mockResolvedValue({ eid: 9, is_valid: false });
+    (prismaMock.exam.update as any).mockResolvedValue({ eid: 9, is_valid: true });
+    (prismaMock.examMessage.findMany as any).mockResolvedValue([{ sender: 'reqUser' }]);
+    (prismaMock.examMessage.deleteMany as any).mockResolvedValue({ count: 1 });
+    (prismaMock.message.create as any).mockResolvedValue({ id: 1 });
+
+    const res = await request(app)
+      .post('/admin/validate-exam')
+      .set(AUTH)
+      .send({ examId: 9, message: 'آزمون خوبی بود، تایید شد' });
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.message.create).toHaveBeenCalledWith({
+      data: {
+        reciver: 'reqUser',
+        sender: 'admin1',
+        text: 'آزمون خوبی بود، تایید شد',
+        date: expect.any(Date),
+      },
+    });
+  });
+
   // ----------------- Payment APIs -----------------
 
   test('POST /payment/pay => 200 (in test mode) + paymentUrl', async () => {
@@ -192,6 +399,54 @@ describe('CORE E2E', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.paymentUrl).toContain('http://localhost:5170/result?Status=OK');
+  });
+
+  test('POST /payment/pay (real gateway) => ignores client-supplied totalPrice and charges the real basket total', async () => {
+    const originalMerchantId = process.env.ZARINPAL_MERCHANT_ID;
+    process.env.ZARINPAL_MERCHANT_ID = 'realmerchantid'; // خارج از حالت تستی
+
+    try {
+      (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'buyer', userType: 'normal' } });
+      (prismaMock.shop.findMany as any).mockResolvedValue([{ cid: 10 }, { cid: 11 }]);
+      (prismaMock.course.findMany as any).mockResolvedValue([
+        { cid: 10, price: 100000 },
+        { cid: 11, price: 50000 },
+      ]);
+      (axios.post as jest.Mock).mockResolvedValueOnce({
+        data: { data: { code: 100, authority: 'AUTH123' } },
+      });
+
+      // کاربر عمداً مبلغ کمتری (۱ تومان) به‌جای مبلغ واقعی (۱۵۰٬۰۰۰) می‌فرسته
+      const res = await request(app).post('/payment/pay').set(AUTH).send({ totalPrice: 1 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      // سرور باید مبلغ واقعیِ محاسبه‌شده از سبد خرید (۱۵۰٬۰۰۰) رو به زرین‌پال بفرسته، نه عدد دستکاری‌شده
+      expect(axios.post).toHaveBeenCalledWith(
+        'https://api.zarinpal.com/pg/v4/payment/request.json',
+        expect.objectContaining({ amount: 150000 })
+      );
+    } finally {
+      process.env.ZARINPAL_MERCHANT_ID = originalMerchantId;
+    }
+  });
+
+  test('POST /payment/pay (real gateway) => 400 when basket is empty', async () => {
+    const originalMerchantId = process.env.ZARINPAL_MERCHANT_ID;
+    process.env.ZARINPAL_MERCHANT_ID = 'realmerchantid';
+
+    try {
+      (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'buyer', userType: 'normal' } });
+      (prismaMock.shop.findMany as any).mockResolvedValue([]);
+
+      const res = await request(app).post('/payment/pay').set(AUTH).send({ totalPrice: 999999 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(axios.post).not.toHaveBeenCalled();
+    } finally {
+      process.env.ZARINPAL_MERCHANT_ID = originalMerchantId;
+    }
   });
 
   test('POST /payment/roll-back => 200 (in test mode) transfer from Shop to Student', async () => {
@@ -204,6 +459,98 @@ describe('CORE E2E', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(prismaMock.shop.findMany).toHaveBeenCalledWith({ where: { username: 'buyer' } });
+  });
+
+  test('POST /payment/roll-back (real gateway) => 200 first time, verifies with Zarinpal and records the payment', async () => {
+    const originalMerchantId = process.env.ZARINPAL_MERCHANT_ID;
+    process.env.ZARINPAL_MERCHANT_ID = 'realmerchantid';
+
+    try {
+      (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'buyer', userType: 'normal' } });
+      (prismaMock.payment.findUnique as any).mockResolvedValue(null);
+      (axios.post as jest.Mock).mockResolvedValueOnce({
+        data: { data: { code: 100, ref_id: 987654 } },
+      });
+      (prismaMock.shop.findMany as any).mockResolvedValue([{ cid: 10 }]);
+      (prismaMock.$transaction as any).mockResolvedValue(true);
+
+      const res = await request(app).post('/payment/roll-back').set(AUTH).send({ authority: 'REAL_AUTH' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.refId).toBe('987654');
+      expect(axios.post).toHaveBeenCalledTimes(1); // زرین‌پال verify شد
+    } finally {
+      process.env.ZARINPAL_MERCHANT_ID = originalMerchantId;
+    }
+  });
+
+  test('POST /payment/roll-back (real gateway) => 200 on a repeated call with the same authority, without re-verifying at Zarinpal', async () => {
+    const originalMerchantId = process.env.ZARINPAL_MERCHANT_ID;
+    process.env.ZARINPAL_MERCHANT_ID = 'realmerchantid';
+
+    try {
+      (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'buyer', userType: 'normal' } });
+      (prismaMock.payment.findUnique as any).mockResolvedValue({
+        authority: 'REAL_AUTH', username: 'buyer', ref_id: '987654', created_at: new Date(),
+      });
+
+      // مثلاً کاربر همین صفحه‌ی نتیجه رو رفرش کرده
+      const res = await request(app).post('/payment/roll-back').set(AUTH).send({ authority: 'REAL_AUTH' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.refId).toBe('987654');
+      expect(axios.post).not.toHaveBeenCalled(); // اصلاً دوباره از زرین‌پال verify نشد
+    } finally {
+      process.env.ZARINPAL_MERCHANT_ID = originalMerchantId;
+    }
+  });
+
+  test('POST /payment/add => 404 when the course does not exist', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'buyer', userType: 'normal' } });
+    (prismaMock.course.findUnique as any).mockResolvedValue(null);
+
+    const res = await request(app).post('/payment/add').set(AUTH).send({ cid: 999 });
+
+    expect(res.status).toBe(404);
+    expect(prismaMock.shop.create).not.toHaveBeenCalled();
+  });
+
+  test('POST /payment/add => 400 when the course is not yet approved', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'buyer', userType: 'normal' } });
+    (prismaMock.course.findUnique as any).mockResolvedValue({ cid: 4, is_valid: false });
+
+    const res = await request(app).post('/payment/add').set(AUTH).send({ cid: 4 });
+
+    expect(res.status).toBe(400);
+    expect(prismaMock.shop.create).not.toHaveBeenCalled();
+  });
+
+  test('POST /payment/add => 200 when the course exists and is approved', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'buyer', userType: 'normal' } });
+    (prismaMock.course.findUnique as any).mockResolvedValue({ cid: 7, is_valid: true });
+    (prismaMock.shop.create as any).mockResolvedValue({ username: 'buyer', cid: 7 });
+
+    const res = await request(app).post('/payment/add').set(AUTH).send({ cid: 7 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('POST /payment/add => 409 with a clear message when the course is already in the basket', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'buyer', userType: 'normal' } });
+    (prismaMock.course.findUnique as any).mockResolvedValue({ cid: 7, is_valid: true });
+    (prismaMock.shop.create as any).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '6.3.0',
+      })
+    );
+
+    const res = await request(app).post('/payment/add').set(AUTH).send({ cid: 7 });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe('این دوره در سبد خرید شما موجود است');
   });
 
   // ----------------- User APIs (simple examples) -----------------

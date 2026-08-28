@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import axios from "axios";
 import * as dotenv from "dotenv";
 
@@ -11,10 +11,12 @@ const iamPort = process.env.IAM_PORT || 3000; // Read key value from .env
 const MERCHANT_ID = process.env.ZARINPAL_MERCHANT_ID!;
 const CALLBACK_URL = process.env.BASE_URL!; // e.g. "https://your-domain.com"
 
-const IS_TEST = MERCHANT_ID === "true";
+// تابع (نه ثابت) عمداً استفاده شده تا مقدار زنده‌ی process.env در هر درخواست خونده بشه؛
+// این کار هم امکان تست هردو حالت (test/real) رو فراهم می‌کنه.
+const isTestMode = () => process.env.ZARINPAL_MERCHANT_ID === "true";
 
 export const payController = async (req: Request, res: Response) => {
-  if (IS_TEST) {
+  if (isTestMode()) {
     res.json({
       success: true,
       paymentUrl: `http://localhost:5170/result?Status=OK&Authority=TEST`,
@@ -35,8 +37,20 @@ export const payController = async (req: Request, res: Response) => {
     );
     const username = userInfo.username as string;
 
-    /* ---- 2) Total price from body ---- */
-    const { totalPrice } = req.body as { totalPrice: number };
+    /* ---- 2) Compute the real total from the user's basket (never trust a client-supplied amount) ---- */
+    const basketItems = await prisma.shop.findMany({
+      where: { username },
+      select: { cid: true },
+    });
+
+    if (basketItems.length === 0) {
+      res.status(400).json({ success: false, message: "سبد خرید شما خالی است" });
+      return;
+    }
+
+    const cids = basketItems.map((item) => item.cid);
+    const courses = await prisma.course.findMany({ where: { cid: { in: cids } } });
+    const totalPrice = courses.reduce((sum, c) => sum + Number(c.price), 0);
 
     /* ---- 3) Request to Zarinpal ---- */
     const { data } = await axios.post(
@@ -49,8 +63,10 @@ export const payController = async (req: Request, res: Response) => {
       }
     );
 
-    if (data.data.code !== 100)
+    if (data.data.code !== 100) {
       res.status(400).json({ success: false, message: "خطا در ایجاد تراکنش" });
+      return;
+    }
 
     const authority = data.data.authority;
     const paymentUrl = `https://www.zarinpal.com/pg/StartPay/${authority}`;
@@ -78,7 +94,7 @@ export const rollBack = async (req: Request, res: Response) => {
     );
     const username = userInfo.username as string;
 
-    if (IS_TEST) {
+    if (isTestMode()) {
       /*  ❇️ We directly perform the transfer operation  */
       const basket = await prisma.shop.findMany({ where: { username } });
       const studentData = basket.map((b) => ({ username, cid: b.cid }));
@@ -95,6 +111,20 @@ export const rollBack = async (req: Request, res: Response) => {
     /* ---- 2) Verification at Zarinpal ---- */
     const { authority } = req.body as { authority: string };
 
+    // اگر این authority قبلاً با موفقیت پردازش شده (مثلاً کاربر صفحه‌ی نتیجه رو
+    // رفرش کرده)، دوباره از زرین‌پال verify نکن — چون بار دوم کد موفقیت متفاوتی
+    // برمی‌گردونه و باعث نمایش پیام غلط «ناموفق» به کاربری می‌شه که پرداختش موفق بوده.
+    // همون نتیجه‌ی موفق قبلی رو مستقیم برگردون.
+    const existingPayment = await prisma.payment.findUnique({ where: { authority } });
+    if (existingPayment) {
+      res.json({
+        success: true,
+        message: "پرداخت موفق و دوره‌ها اضافه شد",
+        refId: existingPayment.ref_id,
+      });
+      return;
+    }
+
     const { data } = await axios.post(
       "https://api.zarinpal.com/pg/v4/payment/verify.json",
       { merchant_id: MERCHANT_ID, authority, amount: 0 }
@@ -104,19 +134,21 @@ export const rollBack = async (req: Request, res: Response) => {
       return;
     }
 
-    /* ---- 3) Transfer records from Shop to Student ---- */
+    /* ---- 3) Transfer records from Shop to Student, and remember this authority ---- */
     const basket = await prisma.shop.findMany({ where: { username } });
     const studentData = basket.map((b) => ({ username, cid: b.cid }));
+    const refId = String(data.data.ref_id);
 
     await prisma.$transaction([
       prisma.student.createMany({ data: studentData, skipDuplicates: true }),
       prisma.shop.deleteMany({ where: { username } }),
+      prisma.payment.create({ data: { authority, username, ref_id: refId } }),
     ]);
 
     res.json({
       success: true,
       message: "پرداخت موفق و دوره‌ها اضافه شد",
-      refId: data.data.ref_id,
+      refId,
     });
   } catch (err: any) {
     console.error(err.response?.data || err);
@@ -188,6 +220,19 @@ export const addToBasketController = async (req: Request, res: Response) => {
       return;
     }
 
+    // Shop هیچ کلید خارجی‌ای به Course نداره، پس بدون این بررسی هر cid دلخواهی
+    // (حتی ناموجود، یا دوره‌ای که هنوز تأیید نشده) قابل افزودن به سبد بود و مشکلش
+    // فقط موقع پرداخت/ثبت‌نام نهایی با خطای مبهم مشخص می‌شد.
+    const course = await prisma.course.findUnique({ where: { cid } });
+    if (!course) {
+      res.status(404).json({ message: "دوره‌ای با این شناسه یافت نشد" });
+      return;
+    }
+    if (!course.is_valid) {
+      res.status(400).json({ message: "این دوره هنوز تأیید نشده و قابل خرید نیست" });
+      return;
+    }
+
     await prisma.shop.create({
       data: {
         username,
@@ -198,9 +243,15 @@ export const addToBasketController = async (req: Request, res: Response) => {
     res.json({ success: true, message: "به سبد خرید افزوده شد" });
   } catch (error: any) {
     console.error(error);
-    res
-      .status(500)
-      .json({ success: false, message: "این دوره در سبد خرید شما موجود است" });
+    // فقط وقتی واقعاً این دوره قبلاً در سبد بوده (نقض کلید یکتای Shop) این پیام رو بده؛
+    // برای هر خطای دیگه‌ای پیام عمومی درست‌تره.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      res
+        .status(409)
+        .json({ success: false, message: "این دوره در سبد خرید شما موجود است" });
+      return;
+    }
+    res.status(500).json({ success: false, message: "خطای سرور" });
   }
 };
 

@@ -43,6 +43,17 @@ export const ownerControll = async (req: Request, res: Response) => {
         res.status(404).json({ message: "چنین کاربری یافت نشد" });
         return;
       }
+      if (result === "cannot delete an owner") {
+        res.status(403).json({ message: "امکان حذف یک مدیر کل (owner) وجود ندارد" });
+        return;
+      }
+      if (result === "user has related records") {
+        res.status(409).json({
+          message:
+            "این کاربر دارای اطلاعات مرتبط (دوره، آزمون، گواهی یا...) است و نمی‌توان حذفش کرد",
+        });
+        return;
+      }
 
       res.status(200).json({ message: result });
       return;
@@ -82,6 +93,7 @@ export const ownerControllAll = async (req: Request, res: Response) => {
   const token = req.headers["authorization"]?.split(" ")[1];
   if (!token) {
     res.status(401).json({ message: "توکن ارسال نشده است" });
+    return;
   }
   try {
     const verifyResponse = await axios.get(
@@ -94,6 +106,7 @@ export const ownerControllAll = async (req: Request, res: Response) => {
 
     if (userType !== "owner") {
       res.status(403).json({ message: "شما مجوز این عملیات را ندارید" });
+      return;
     }
     // 1) Get a list of all users
     const allUsers = await prisma.user.findMany();

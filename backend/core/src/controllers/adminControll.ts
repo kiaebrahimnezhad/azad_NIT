@@ -14,7 +14,7 @@ dotenv.config();
 const iamPort = process.env.IAM_PORT || 3000; // Read key from .env
 
 export const validateCourseControll = async (req: Request, res: Response) => {
-  const { courseId } = req.body;
+  const { courseId, message } = req.body;
   const token = req.headers["authorization"]?.split(" ")[1];
   if (!token) {
     res.status(401).json({ message: "Token not provided" });
@@ -31,6 +31,10 @@ export const validateCourseControll = async (req: Request, res: Response) => {
 
     if (!courseId) {
       res.status(400).json({ message: "course id not provided" });
+      return;
+    }
+    if (!message) {
+      res.status(400).json({ message: "message field is required" });
       return;
     }
 
@@ -77,6 +81,16 @@ export const validateCourseControll = async (req: Request, res: Response) => {
     // 7) Delete related messages
     await prisma.courseMessage.deleteMany({
       where: { sender: firstUsername, cid: parseInt(courseId) },
+    });
+
+    // 7.1) Notify the requester with the admin's approval message
+    await prisma.message.create({
+      data: {
+        reciver: firstUsername,
+        sender: requesterUsername,
+        text: message,
+        date: new Date(),
+      },
     });
 
     // 8) Success response
@@ -351,6 +365,28 @@ export const commentMessageControler = async (req: Request, res: Response) => {
 };
 
 export const getCommentControler = async (req: Request, res: Response) => {
+  // این تابع فقط برای بخش رسیدگی به گزارش‌های کامنت در پنل ادمین استفاده می‌شه
+  // (CommentReports.tsx)، نه نمایش عمومی کامنت‌ها — پس باید فقط برای ادمین باز باشه.
+  const token = req.headers["authorization"]?.split(" ")[1];
+  if (!token) {
+    res.status(401).json({ message: "توکن ارسال نشده است" });
+    return;
+  }
+
+  try {
+    const { data: userInfo } = await axios.get(
+      `http://localhost:${iamPort}/login/user-info`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (userInfo.userType !== "admin") {
+      res.status(403).json({ message: "شما مجوز این عملیات را ندارید" });
+      return;
+    }
+  } catch {
+    res.status(401).json({ message: "توکن نامعتبر است" });
+    return;
+  }
+
   const { commentId } = req.body;
 
   if (typeof commentId !== "number") {

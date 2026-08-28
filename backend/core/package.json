@@ -23,6 +23,7 @@
     "cross-env": "^10.0.0",
     "jest": "^29.7.0",
     "jest-mock-extended": "^4.0.0",
+    "jest-util": "^29.7.0",
     "nodemon": "^3.1.9",
     "prisma": "^6.3.0",
     "supertest": "^7.1.4",
@@ -42,6 +43,7 @@
     "jalaali-js": "^1.2.8",
     "jsonwebtoken": "^9.0.2",
     "libreoffice-convert": "^1.6.1",
+    "mongoose": "^9.9.4",
     "multer": "^2.2.0",
     "pizzip": "^3.2.0"
   }

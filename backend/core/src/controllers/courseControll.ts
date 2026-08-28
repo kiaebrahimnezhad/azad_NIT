@@ -204,6 +204,28 @@ export const getCourseControll = async (
       return;
     }
 
+    // 2.1) Auth: this endpoint is shared by two very different consumers —
+    // the public course-detail page (CourseDetail.tsx, no login required) and
+    // the admin's pending-course-review page (WatchCourses.tsx, admin/owner only).
+    // An already-approved course is public info by definition, so only a
+    // not-yet-approved course needs to be locked down to admin/owner.
+    if (!course.is_valid) {
+      const token = req.headers["authorization"]?.split(" ")[1];
+      if (!token) {
+        res.status(401).json({ message: "توکن ارسال نشده است" });
+        return;
+      }
+
+      const { data: userInfo } = await axios.get(
+        `http://localhost:${iamPort}/login/user-info`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (userInfo.userType !== "admin" && userInfo.userType !== "owner") {
+        res.status(403).json({ message: "شما مجوز این عملیات را ندارید" });
+        return;
+      }
+    }
+
     // 3) Get course time info from time table
     const timeInfo = await prisma.time.findMany({
       where: { cid },
