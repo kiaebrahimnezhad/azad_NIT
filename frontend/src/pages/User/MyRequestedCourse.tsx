@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import useWindowSize from "../../hooks/useWindowSize";
 import { coreApi, userSafeErrorMessage } from "../../lib/api";
-import RequestedCourseCard from "../../components/RequestedCourseCard";
+import RequestedCourseCard from "./components/RequestedCourseCard";
 
 export type RequestedCourse = {
   cid: number;
@@ -54,7 +54,7 @@ const MyRequestedCourse: React.FC = () => {
   }, []);
 
   const goCourse = (cid: number) => navigate(`/course/${cid}`);
-  const goCreateExam = (cid: number) => navigate(`/createxam/${cid}`);
+  const goCreateExam = (cid: number) => navigate(`/exam/createExam/${cid}`);
 
   const showToast = (message: string, type: "info"|"success"|"error" = "info") => {
     setToast({show:true, message, type});

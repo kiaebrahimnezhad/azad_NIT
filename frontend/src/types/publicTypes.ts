@@ -14,10 +14,6 @@ export interface LoginResponse {
   message: string;
 }
 
-export interface EmailResponse {
-  message: string;
-}
-
 export interface SampleFormResult {
   show: boolean;
   success: boolean;

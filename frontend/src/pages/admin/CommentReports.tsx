@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import useWindowSize from "../../hooks/useWindowSize";
-import LoadingSpinner from '../../components/LoadingSpinner';
+import LoadingInformaition from '../../components/ui/LoadingInformaition';
 import { coreApi, isAxiosErrorWithMessage } from '../../lib/api';
 
 interface CommentReport {
@@ -201,7 +201,7 @@ function CommentReports(){
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
               {loading ? (
-                <LoadingSpinner />
+                <LoadingInformaition />
               ) : error ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">

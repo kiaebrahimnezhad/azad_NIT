@@ -385,11 +385,11 @@ export const getExamByEid = async (
 
     // Allow if admin/owner
     if (userType !== "admin" && userType !== "owner") {
-      // Or if requester of related course
-      const cr = await prisma.courseRequester.findUnique({
+      // Or if enrolled student of the related course
+      const enrolled = await prisma.student.findUnique({
         where: { username_cid: { username, cid: exam.courseCid } },
       });
-      if (!cr) {
+      if (!enrolled) {
         res.status(403).json({ message: "Access denied" });
         return;
       }
@@ -629,7 +629,8 @@ export const getQuestionByEid = async (
       }
     }
 
-    // 3) Fetch questions (without ans and examEid)
+    // 3) Fetch questions (without ans for students; admin/owner get ans too, for review)
+    const isReviewer = userType === "admin" || userType === "owner";
     const questions = await prisma.question.findMany({
       where: { examEid: eid },
       select: {
@@ -640,6 +641,7 @@ export const getQuestionByEid = async (
         option3: true,
         option4: true,
         option5: true,
+        ...(isReviewer ? { ans: true } : {}),
       },
     });
 

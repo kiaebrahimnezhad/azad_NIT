@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import AdminPanel from "../../components/AdminPanel";
+import AdminPanel from "./components/AdminPanel";
 import CourseRequests from "./CourseRequests";
 import ExamRequests from "./ExamRequests";
 import CommentRequests from "./CommentReports";

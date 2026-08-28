@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import type { LoginContext, UserInfo, UserInfoForgot } from "./loginTypes";
-import { useNavigate, Link } from "react-router-dom";
-import Input from "../../components/Input";
+import { useNavigate, Link, useLocation } from "react-router-dom";
+import Input from "../../components/ui/Input";
 import type { LoginResponse, otpResponse, SampleFormResult } from "../../types/publicTypes";
-import Button from "../../components/Button";
+import Button from "../../components/ui/Button";
 import { useAuth } from "../../context/AuthContext";
 import { iamApi, userSafeErrorMessage, isAxiosErrorWithMessage } from "../../lib/api";
 
@@ -53,6 +53,8 @@ const Toast: React.FC<{ toast: ToastState }> = ({ toast }) => {
 
 function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from;
   const [isForgotPass, setIsForgotPass] = useState<boolean>(false);
   const { authStatus, userType } = useAuth();
 
@@ -68,12 +70,12 @@ function Login() {
     setTimeout(() => setToast((t) => ({ ...t, show: false })), 2000);
   };
 
-  // اگر از قبل نشست معتبر داریم (authStatus از AuthContext می‌آید)، بر اساس نقش هدایت می‌کنیم
+  // اگر از قبل نشست معتبر داریم (authStatus از AuthContext می‌آید)، بر اساس نقش (یا مسیر مقصد قبلی) هدایت می‌کنیم
   useEffect(() => {
     if (authStatus === "authenticated" && userType) {
-      routeByRole(navigate, userType);
+      from ? navigate(from) : routeByRole(navigate, userType);
     }
-  }, [authStatus, userType, navigate]);
+  }, [authStatus, userType, navigate, from]);
 
   return (
     <loginContext.Provider value={{ isForgotPass, setIsForgotPass }}>
@@ -127,6 +129,8 @@ function LoginForm() {
     message: "",
   });
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from
 
   const userInfHandler = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUserInf((s) => ({ ...s, [e.target.name]: e.target.value }));
@@ -147,7 +151,11 @@ function LoginForm() {
         });
 
         // هدایت براساس نقش
-        setTimeout(() => routeByRole(navigate, userType), 700);
+        setTimeout(
+          () => {
+            from ? navigate(from) : routeByRole(navigate, userType);
+          }, 700
+        );
       })
       .catch((err) => {
         setSubmitResult({

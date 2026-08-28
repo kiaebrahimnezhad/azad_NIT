@@ -3,9 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { coreApi, isAxiosErrorWithMessage } from "../../lib/api";
-import LoadingInformaition from "../../components/LoadingInformaition";
-import AdminCard from "../../components/AdminCard";
-import Input from "../../components/Input";
+import LoadingInformaition from "../../components/ui/LoadingInformaition";
+import AdminCard from "./components/AdminCard";
+import Input from "../../components/ui/Input";
 import styles from "./Owner.module.css";
 
 type ToastType = "success" | "error" | "info";
@@ -41,6 +41,7 @@ function Owner(){
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [removingUsername, setRemovingUsername] = useState<string | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const { logout } = useAuth()
 
@@ -95,11 +96,16 @@ function Owner(){
     }
   };
 
-  const handleDeleteUser = async () => {
+  const handleDeleteUserClick = () => {
     if (!deleteUser.trim()) {
       showToast("لطفاً نام کاربری را وارد کنید", "error");
       return;
     }
+    setConfirmDeleteOpen(true);
+  };
+
+  const performDeleteUser = async () => {
+    setConfirmDeleteOpen(false);
     try {
       setDeleting(true);
       await updateUser({
@@ -308,7 +314,7 @@ function Owner(){
                 </div>
                 لیست ادمین‌ها
               </h2>
-              <div className="flex items-center space-x-2 space-x-reverse">
+              <div className="flex items-center space-x-2">
                 <span className="bg-indigo-100 text-indigo-800 text-sm font-medium px-4 py-2 rounded-full">
                   {admins.length} ادمین
                 </span>
@@ -461,11 +467,11 @@ function Owner(){
                 placeholder="نام کاربری برای حذف"
                 value={deleteUser}
                 onChange={(e) => setDeleteUser(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleDeleteUser()}
+                onKeyDown={(e) => e.key === "Enter" && handleDeleteUserClick()}
                 inpClass="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all bg-white"
               />
               <button
-                onClick={handleDeleteUser}
+                onClick={handleDeleteUserClick}
                 disabled={deleting}
                 className="w-full text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center bg-gradient-to-r from-rose-500 to-red-500 hover:shadow-lg transition-all"
               >
@@ -492,6 +498,39 @@ function Owner(){
               </button>
             </div>
           </div>
+
+          {/* مودال تأیید حذف کاربر */}
+          {confirmDeleteOpen && (
+            <div
+              className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
+              onClick={() => setConfirmDeleteOpen(false)}
+            >
+              <div
+                className="bg-white rounded-2xl shadow-xl w-11/12 md:w-2/3 lg:w-1/3 p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-lg font-bold text-gray-900 mb-3">حذف کاربر</h3>
+                <p className="text-gray-700 mb-6">
+                  آیا مطمئن هستید می‌خواهید کاربر «{deleteUser}» را برای همیشه حذف کنید؟
+                  این عملیات قابل بازگشت نیست.
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setConfirmDeleteOpen(false)}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                  >
+                    انصراف
+                  </button>
+                  <button
+                    onClick={performDeleteUser}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    بله، حذف کن
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* راهنما */}
           <div className={`${styles.glassEffect} rounded-2xl shadow-xl p-6 ${styles.cardHover} hidden lg:block`}>

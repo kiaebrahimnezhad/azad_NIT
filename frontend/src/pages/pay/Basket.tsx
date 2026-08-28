@@ -1,10 +1,10 @@
 // src/pages/pay/Basket.tsx
 import { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Header from '../../components/Header';
-import Footer from '../../components/Footer';
+import Header from '../../components/common/Header';
+import Footer from '../../components/common/Footer';
 import { coreApi, userSafeErrorMessage } from '../../lib/api';
-import BasketCourseCard from '../../components/BasketCourseCard';
+import BasketCourseCard from './components/BasketCourseCard';
 
 export interface Course {
   cid: number;

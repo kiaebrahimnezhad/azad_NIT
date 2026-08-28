@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState } from "react";
 import type { OtpRequest, SigninContext, UserInfo } from "./signinTypes";
-import Input from "../../components/Input";
+import Input from "../../components/ui/Input";
 import { Link, useNavigate } from "react-router-dom";
-import Button from "../../components/Button";
+import Button from "../../components/ui/Button";
 import useWindowSize from "../../hooks/useWindowSize";
 import { iamApi } from "../../lib/api";
 import type {

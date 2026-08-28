@@ -1,10 +1,9 @@
 // src/pages/Testp/Testp.tsx
 import React, { createContext, ReactNode } from "react";
 import useSession from "../../hooks/useSession";
-import Header from "../../components/Header";
-import LoadingSpinner from "../../components/LoadingSpinner";
-import CourseReq from "../User/CourseReq";
-import Information from "../User/Information";
+import Header from "../../components/common/Header";
+import LoadingInformaition from "../../components/ui/LoadingInformaition";
+
 
 // دقیقاً همان tuple برگشتی از useSession
 function Testp() {
@@ -13,13 +12,9 @@ function Testp() {
   return (
     <>
       <Header />
-      <LoadingSpinner />
-      
-      <Information />
-
-      <br /><br /><br /><br /><br /><br /><br /><br /><br /><br />
-
-      <CourseReq />
+      <LoadingInformaition />
+      <br /><br />
+      <LoadingInformaition message="در حال ارسال..." size="sm" />
 
     </>
     

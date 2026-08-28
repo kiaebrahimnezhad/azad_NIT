@@ -6,6 +6,8 @@ export interface Session {
   end_time: string | null;
 }
 
+export type SessionField = keyof Session;
+
 // ← این تابع حالا دقیقاً همین نوع را برمی‌گرداند
 function useSession(): [
   Session,

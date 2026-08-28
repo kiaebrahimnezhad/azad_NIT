@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { iamApi } from "../lib/api";
+import { iamApi, setUnauthorizedHandler } from "../lib/api";
 import type { Auth, AuthStatus, PublicContext, UserRole } from "../types/publicTypes";
 
 export const AuthContext = createContext<PublicContext | null>(null);
@@ -33,6 +33,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ورود کاربر و ذخیره‌سازی داده‌های نشست
   const login = useCallback(
     (session: { username: string; token: string; userType: UserRole }) => {
+      // دقیقاً همان اعتبارسنجی runtime که refreshSession روی پاسخ سرور انجام می‌دهد؛
+      // چون userType هم اینجا از پاسخ واقعی سرور می‌آید و صرفاً تایپ TypeScript تضمینی برایش نیست.
+      if (!session.username || !isUserRole(session.userType)) {
+        logout();
+        return;
+      }
+
       localStorage.setItem("token", session.token);
       setToken(session.token);
       setUserName(session.username);
@@ -40,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsUserLogin(true);
       setAuthStatus("authenticated");
     },
-    []
+    [logout]
   );
 
   // تازه‌سازی نشست
@@ -78,6 +85,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshSession();
   }, [refreshSession]);
+
+  // logout واقعی همین Provider را به api.ts معرفی می‌کنیم تا هر پاسخ 401 از iam/core
+  // خودکار همین‌جا هم اعمال بشه، نه فقط توی صفحه‌ای که درخواست رو زده.
+  useEffect(() => {
+    setUnauthorizedHandler(logout);
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
 
   const value = useMemo<PublicContext>(
     () => ({

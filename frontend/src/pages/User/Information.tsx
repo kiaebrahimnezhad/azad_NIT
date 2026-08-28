@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import useWindowSize from "../../hooks/useWindowSize";
 import { coreApi, isAxiosErrorWithMessage } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
-import LoadingSpinner from "../../components/LoadingSpinner";
-import Input from "../../components/Input";
+import LoadingInformaition from "../../components/ui/LoadingInformaition";
+import Input from "../../components/ui/Input";
 
 interface UserData {
   username: string;
@@ -147,7 +147,7 @@ function Information(){
 
   if (loading) {
     return (
-      <LoadingSpinner />
+      <LoadingInformaition />
     );
   }
 

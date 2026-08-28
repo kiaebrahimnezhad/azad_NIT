@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import Header from '../../components/Header';
-import Footer from '../../components/Footer';
+import { useParams } from 'react-router-dom';
+import Header from '../../components/common/Header';
+import Footer from '../../components/common/Footer';
+import { coreApi, isAxiosErrorWithMessage } from '../../lib/api';
+import { courseImageUrl, DEFAULT_COURSE_IMAGE } from '../../lib/assets';
+import { formatMinutes, toFa } from '../../lib/format';
+import LoadingInformaition from '../../components/ui/LoadingInformaition';
 
 interface Course {
   cid: number;
@@ -23,19 +27,8 @@ interface TimeSlot {
   end_time: number;
 }
 
-const formatMinutes = (m: number) =>
-  `${Math.floor(m / 60)}:${(m % 60).toString().padStart(2, '0')}`;
-
-const toFa = (d: string) => new Date(d).toLocaleDateString('fa-IR');
-
-const imgUrl = (p: string | null) =>
-  p
-    ? `http://localhost:5000/${p.replace(/\\/g, '/')}`
-    : 'http://localhost:5000/uploads/default.jpg';
-
-const WatchCourse: React.FC = () => {
+function WatchCourse(){
   const { cid } = useParams<{ cid: string }>();
-  const navigate = useNavigate();
   const [course, setCourse] = useState<Course | null>(null);
   const [times, setTimes] = useState<TimeSlot[]>([]);
   const [image, setImage] = useState<string | null>(null);
@@ -47,29 +40,20 @@ const WatchCourse: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const token = localStorage.getItem('token');
-        if (!token) {
-          setError('ابتدا وارد شوید');
-          return;
-        }
-        const cRes = await fetch('http://localhost:5000/admin/get-course', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          credentials: 'include',
-          body: JSON.stringify({ cid: Number(cid) })
-        });
-        if (!cRes.ok) throw new Error(`خطای سرور (${cRes.status})`);
-        const cJson = await cRes.json();
-        if (!cJson.course) throw new Error('دوره‌ای یافت نشد.');
+        const { data } = await coreApi.post('/admin/get-course', { cid: Number(cid) });
+        if (!data.course) throw new Error('دوره‌ای یافت نشد.');
 
-        setCourse(cJson.course);
-        setTimes(cJson.time ?? []);
-        setImage(cJson.image ?? null);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'خطایی رخ داد');
+        setCourse(data.course);
+        setTimes(data.time ?? []);
+        setImage(data.image ?? null);
+      } catch (err) {
+        const message =
+          isAxiosErrorWithMessage(err) && err.response?.data?.message
+            ? err.response.data.message
+            : err instanceof Error
+              ? err.message
+              : 'خطایی رخ داد';
+        setError(message);
       } finally {
         setLoading(false);
       }
@@ -79,10 +63,7 @@ const WatchCourse: React.FC = () => {
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
-        <p className="mt-4 text-lg text-gray-600">در حال بارگذاری...</p>
-      </div>
+      <LoadingInformaition />
     </div>
   );
 
@@ -111,10 +92,10 @@ const WatchCourse: React.FC = () => {
             <div className="md:flex">
               <div className="md:w-1/3 bg-gray-100 flex items-center justify-center">
                 <img
-                  src={imgUrl(image)}
+                  src={courseImageUrl(image)}
                   alt={course.name}
                   className="w-full h-80 md:h-full object-contain p-4"
-                  onError={e => { (e.target as HTMLImageElement).src = 'http://localhost:5000/uploads/default.jpg'; }}
+                  onError={e => { (e.target as HTMLImageElement).src = DEFAULT_COURSE_IMAGE; }}
                 />
               </div>
               <div className="md:w-2/3 p-8 space-y-6">

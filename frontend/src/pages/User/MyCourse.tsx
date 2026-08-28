@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import useWindowSize from "../../hooks/useWindowSize";
 import { CORE_API_BASE_URL, coreApi } from "../../lib/api";
-import EnrolledCourseCard from "../../components/EnrolledCourseCard";
+import EnrolledCourseCard from "./components/EnrolledCourseCard";
 
 export interface Course {
   cid: number;

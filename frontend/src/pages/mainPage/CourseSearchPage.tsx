@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { coreApi } from "../../lib/api";
-import Footer from "../../components/Footer";
+import Footer from "../../components/common/Footer";
 import pentagonImg from "../../assets/images/pentagon.jpg";
-import Header from "../../components/Header";
+import Header from "../../components/common/Header";
 import type { Course, CourseSearchRequest, CourseSearchResponse } from "../../types/publicTypes";
 import generalIcon from "../../assets/images/general.jpg";
 import electronicsIcon from "../../assets/images/electronics.png";
@@ -10,9 +10,11 @@ import mathIcon from "../../assets/images/math.png";
 import mechanicalIcon from "../../assets/images/mechanical.PNG";
 import civilIcon from "../../assets/images/civil.PNG";
 import industrialIcon from "../../assets/images/industrial.PNG";
-import CategoryButton from "../../components/CategoryButton";
-import CourseCard from "../../components/CourseCard";
-import LoadingSpinner from "../../components/LoadingSpinner";
+import CategoryButton from "./components/CategoryButton";
+import CourseCard from "./components/CourseCard";
+import LoadingInformaition from "../../components/ui/LoadingInformaition";
+import { COURSE_CATEGORIES, type CourseCategory } from "../../lib/categories";
+import Input from "../../components/ui/Input";
 
 function SiteHero(){
   return (
@@ -45,9 +47,9 @@ function CourseSearchPage() {
   const coursesResRef = useRef<HTMLDivElement | null>(null);
 
 
-  // FIX FIX FIX : Category icons should be fetched from backend or config, not hardcoded. 
-  // باید درست شود
-  const icons: Record<string,string> = {
+  // آیکون هر رشته؛ چون Record<CourseCategory, string> است، اگر یک رشته در lib/categories.ts
+  // اضافه/حذف/تغییر نام شود ولی اینجا آپدیت نشود، TypeScript همین‌جا خطا می‌دهد.
+  const icons: Record<CourseCategory, string> = {
     'عمومی': generalIcon,
     'علوم پایه': mathIcon,
     'برق و کامپیوتر': electronicsIcon,
@@ -56,10 +58,11 @@ function CourseSearchPage() {
     'صنایع و مدیریت': industrialIcon,
   };
 
-  // FIX FIX FIX : Category icons should be fetched from backend or config, not hardcoded.
-  const categories = Object.entries(icons).map(([id, icon]) => ({
-    id, name: id, icon
-  }));
+  const categories = COURSE_CATEGORIES.map(
+    (id) => (
+      {id, name: id, icon: icons[id]}
+    )
+  );
 
   const searchCourses = useCallback(async () => {
       requestController.current?.abort(); // لغو درخواست قبلی در صورت وجود
@@ -122,26 +125,24 @@ function CourseSearchPage() {
         {/* Search */}
         <div className="bg-white rounded-2xl shadow-lg p-8 -mt-20 relative z-10">
           <div className="grid md:grid-cols-2 gap-6 mb-8">
-            <div>
-              <label className="block text-gray-700 font-medium mb-2">نام دوره</label>
-              <input
-                type="text"
-                value={courseName}
-                onChange={e => setCourseName(e.target.value)}
-                placeholder="نام دوره را وارد کنید..."
-                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-gray-700 font-medium mb-2">نام استاد</label>
-              <input
-                type="text"
-                value={teacherName}
-                onChange={e => setTeacherName(e.target.value)}
-                placeholder="نام استاد را وارد کنید..."
-                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+            <Input
+              name="courseName"
+              label="نام دوره"
+              value={courseName}
+              onChange={e => setCourseName(e.target.value)}
+              placeholder="نام دوره را وارد کنید..."
+              inpClass="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              labelClass="block text-gray-700 font-medium mb-2"
+            />
+            <Input
+              name="teacherName"
+              label="نام استاد"
+              value={teacherName}
+              onChange={e => setTeacherName(e.target.value)}
+              placeholder="نام استاد را وارد کنید..."
+              inpClass="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              labelClass="block text-gray-700 font-medium mb-2"
+            />
           </div>
           {/* دسته بندی */}
           <div className="mb-8">
@@ -178,7 +179,7 @@ function CourseSearchPage() {
         {/* Results */}
         <div className="mt-12" ref={coursesResRef}  >
           {loading ? (
-            <LoadingSpinner />
+            <LoadingInformaition />
           ) : courses.length > 0 ? (
             <div>
               <h2 className="text-2xl font-bold text-gray-800 mb-8">

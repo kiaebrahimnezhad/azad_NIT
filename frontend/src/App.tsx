@@ -2,16 +2,17 @@ import { Route, Routes } from "react-router-dom";
 import Testp from "./pages/Testp/Testp";
 import CourseSearchPage from "./pages/mainPage/CourseSearchPage";
 import CourseDetail from "./pages/mainPage/CourseDetail";
-import Result from "./pages/pay/result";
+import Result from "./pages/pay/Result";
 import AdminPage from "./pages/admin/AdminPage";
-import ExamDetails from "./pages/mainPage/ExamDetails";
+import ExamDetails from "./pages/exam/ExamDetails";
 import WatchCourse from "./pages/mainPage/WatchCourses";
 import Signin from "./pages/signin/Signin";
 import Login from "./pages/login/Login";
-import CreateExam from "./pages/User/CreateExam";
+import CreateExam from "./pages/exam/CreateExam";
 import Owner from "./pages/owner/Owner";
 import UserPage from "./pages/User/UserPage";
-import ExamPage from "./pages/exam/ExamPage";
+import ExamsPage from "./pages/exam/ExamsPage";
+import TakeExam from "./pages/exam/TakeExam";
 import { QuizProvider } from "./pages/exam/ExamContext";
 import { AuthContext, AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -50,18 +51,7 @@ function AppRoutes() {
         path="/user/userPage/"
         element={<ProtectedRoute allow={["normal"]}><UserPage /></ProtectedRoute>}
       />
-      <Route
-        path="/user/userPage/examPage/:cid"
-        element={
-          <ProtectedRoute allow={["normal"]}>
-            <QuizProvider><ExamPage /></QuizProvider>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/createxam/:cid/:eid?"
-        element={<ProtectedRoute allow={["normal"]}><CreateExam /></ProtectedRoute>}
-      />
+      
       <Route
         path="/pay/basket"
         element={<ProtectedRoute allow={["normal"]}><Basket /></ProtectedRoute>}
@@ -85,10 +75,7 @@ function AppRoutes() {
         path="/admin/CommentRequests"
         element={<ProtectedRoute allow={["admin"]}><CommentRequests /></ProtectedRoute>}
       /> */}
-      <Route
-        path="/exam/:eid"
-        element={<ProtectedRoute allow={["admin", "owner"]}><ExamDetails /></ProtectedRoute>}
-      />
+      
       <Route
         path="/watchCourse/:cid"
         element={<ProtectedRoute allow={["admin", "owner"]}><WatchCourse /></ProtectedRoute>}
@@ -97,6 +84,32 @@ function AppRoutes() {
         path="/owner"
         element={<ProtectedRoute allow={["owner"]}><Owner /></ProtectedRoute>}
       />
+
+      {/* exam */}
+      <Route
+        path="/exam/examDetails/:eid"
+        element={<ProtectedRoute allow={["admin", "owner"]}><ExamDetails /></ProtectedRoute>}
+      />
+      <Route
+        // path="/user/userPage/examPage/:cid"
+        path="/exam/courseExams/:cid"
+        element={
+          <ProtectedRoute allow={["normal"]}><ExamsPage /></ProtectedRoute>
+        }
+      />
+      <Route
+        path="/exam/takeExam/:eid"
+        element={
+          <ProtectedRoute allow={["normal"]}>
+            <QuizProvider><TakeExam /></QuizProvider>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/exam/createExam/:cid/:eid?"
+        element={<ProtectedRoute allow={["normal"]}><CreateExam /></ProtectedRoute>}
+      />
+
 
       {/* {import.meta.env.DEV && <Route path="/test" element={<Testp />} />} */}
       <Route path="/test" element={<Testp />} /> 

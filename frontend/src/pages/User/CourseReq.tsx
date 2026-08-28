@@ -2,23 +2,17 @@
 import { useState, useEffect, ChangeEvent, FormEvent, Fragment } from "react";
 import { DateObject } from "react-multi-date-picker";
 
-import Button from "../../components/Button";
-import Input from "../../components/Input";
-import SessionSelector from "../../components/SessionSelector";
-import PersianDateField from "../../components/PersianDateField";
+import Button from "../../components/ui/Button";
+import Input from "../../components/ui/Input";
+import SessionSelector from "./components/SessionSelector";
+import PersianDateField from "../../components/ui/PersianDateField";
 
 import useSession from "../../hooks/useSession";
 import { coreApi, isAxiosErrorWithMessage } from "../../lib/api";
+import { COURSE_CATEGORIES } from "../../lib/categories";
 
 /* ثابت‌ها */
-const categories = [
-  "عمومی",
-  "علوم پایه",
-  "برق و کامپیوتر",
-  "مکانیک",
-  "عمران و معماری",
-  "صنایع و مدیریت",
-];
+const categories = COURSE_CATEGORIES;
 
 /* انواع */
 interface CoreInfo {
@@ -101,6 +95,7 @@ function RequestForm({ showToast, onSubmitted }: RequestFormProps) {
   const [imgURL, setImgURL] = useState<string | null>(null);
   const [count, setCount] = useState(3);
   const [submitting, setSubmitting] = useState(false);
+  // 
   const sess = [
     useSession(),
     useSession(),

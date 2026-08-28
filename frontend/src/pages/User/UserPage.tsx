@@ -1,5 +1,5 @@
 import { useState } from "react";
-import UserPanel from "../../components/UserPanel";
+import UserPanel from "./components/UserPanel";
 import Information from "./Information";
 import MyCourse from "./MyCourse";
 import MyRequestedCourse from "./MyRequestedCourse";

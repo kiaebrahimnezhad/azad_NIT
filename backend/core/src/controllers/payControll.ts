@@ -113,7 +113,11 @@ export const rollBack = async (req: Request, res: Response) => {
       prisma.shop.deleteMany({ where: { username } }),
     ]);
 
-    res.json({ success: true, message: "پرداخت موفق و دوره‌ها اضافه شد" });
+    res.json({
+      success: true,
+      message: "پرداخت موفق و دوره‌ها اضافه شد",
+      refId: data.data.ref_id,
+    });
   } catch (err: any) {
     console.error(err.response?.data || err);
     res.status(500).json({ success: false, message: "خطا در پردازش پرداخت" });

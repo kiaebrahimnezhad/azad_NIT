@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import Footer from '../../components/Footer';
+import Footer from '../../components/common/Footer';
 import { coreApi, userSafeErrorMessage, isAxiosErrorWithMessage } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
-import CourseInfoCard from '../../components/CourseInfoCard';
-import CommentItem from '../../components/CommentItem';
-import ReplyItem from '../../components/ReplyItem';
-import CommentActionForm from '../../components/CommentActionForm';
+import CourseInfoCard from './components/CourseInfoCard';
+import CommentItem from './components/CommentItem';
+import CommentActionForm from './components/CommentActionForm';
 
 /* ---------- انواع ---------- */
 interface Course {
@@ -64,7 +63,9 @@ function CourseDetail(){
   const [error, setError]       = useState<string | null>(null);
 
   /* ارسال نظر */
-  const [replyTo, setReplyTo] = useState<number | null>(null);
+  // rootId: کامنت ریشه‌ای که پاسخ باید زیرش قرار بگیرد (حتی وقتی پاسخِ یک پاسخ باشد)
+  // mentionSender: نام کاربریِ پاسخ (نه ریشه)ای که واقعاً به آن پاسخ داده می‌شود، برای پیشوند @نام‌کاربری
+  const [replyTarget, setReplyTarget] = useState<{ rootId: number; mentionSender?: string } | null>(null);
   const [msg, setMsg]         = useState('');
   const [sending, setSending] = useState(false);
 
@@ -114,12 +115,14 @@ function CourseDetail(){
 }, [cid, fetchComments]);
 
   /* درخت کامنت‌ها */
-  const commentTree = useMemo(() => {
-    const roots = comments.filter(c => c.replied_to === null);
-    return roots.map(r => ({
-      ...r,
-      replies: comments.filter(c => c.replied_to === r.id)
-    }));
+  const commentTree = useMemo(
+      () => {
+        const roots = comments.filter(c => c.replied_to === null);
+        return roots.map(
+          (r) => ({
+          ...r,
+          replies: comments.filter(c => c.replied_to === r.id)
+        }));
   }, [comments]);
 
   /* توابع کمکی */
@@ -138,14 +141,14 @@ function CourseDetail(){
     try {
       setSending(true);
       const { data } = await coreApi.post<ActionResponse>('/user/send-comment', {
-        replied_to: replyTo,
+        replied_to: replyTarget?.rootId ?? null,
         text: msg.trim(),
         course: Number(cid),
       });
       if (data.success) {
         showToast('✅ نظر ثبت شد', true);
         setMsg('');
-        setReplyTo(null);
+        setReplyTarget(null);
         await fetchComments();
       } else {
         showToast(data.message || 'خطا در ثبت نظر', false);
@@ -235,22 +238,24 @@ function CourseDetail(){
                     parent => (
                       <li key={parent.id}>
                         <CommentItem
-                          id={parent.id}
                           sender={parent.sender}
                           text={parent.text}
-                          onReply={(id) => { setReplyTo(id); setMsg(''); }}
-                          onReport={(id) => { setReportId(id); setReportTxt(''); }}
+                          onReply={() => { setReplyTarget({ rootId: parent.id }); setMsg(''); }}
+                          onReport={() => { setReportId(parent.id); setReportTxt(''); }}
                         />
                         {
                           parent.replies.map(
                             rep => (
-                              <ReplyItem
+                              <CommentItem
                                 key={rep.id}
-                                id={rep.id}
                                 sender={rep.sender}
                                 text={rep.text}
-                                onReply={(id) => { setReplyTo(id); setMsg(''); }}
-                                onReport={(id) => { setReportId(id); setReportTxt(''); }}
+                                isReply
+                                onReply={() => {
+                                  setReplyTarget({ rootId: parent.id, mentionSender: rep.sender });
+                                  setMsg(`@${rep.sender} `);
+                                }}
+                                onReport={() => { setReportId(rep.id); setReportTxt(''); }}
                               />
                             )
                           )
@@ -266,12 +271,12 @@ function CourseDetail(){
 
             {/* ارسال نظر/پاسخ */}
             <CommentActionForm
-              variant="comment" title={replyTo ? "ارسال پاسخ" : "افزودن نظر جدید"}
+              variant="comment" title={replyTarget ? "ارسال پاسخ" : "افزودن نظر جدید"}
               value={msg} onChange={setMsg}
               onSubmit={sendComment} submitting={sending}
               submitLabel="ارسال" submittingLabel="در حال ارسال…"
               placeholder="متن خود را بنویسید…"
-              onCancel={replyTo !== null ? () => { setReplyTo(null); setMsg(''); } : undefined}
+              onCancel={replyTarget !== null ? () => { setReplyTarget(null); setMsg(''); } : undefined}
             />
 
             {/* ارسال گزارش */}
