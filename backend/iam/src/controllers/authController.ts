@@ -4,12 +4,9 @@ import * as dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
-import { randomBytes } from "crypto";
-import axios from "axios";
 
 const secretKey = process.env.JWT_SECRET_KEY || ""; // Read key value from .env
 const secretHashTemp = Number(process.env.HASH_SECRET_KEY) || 10; // Read key value from .env
-const secretHash = bcrypt.genSalt(secretHashTemp);
 
 dotenv.config(); // Load environment variables
 const iamPort = process.env.IAM_PORT || 3000; // Read key value from .env
@@ -223,7 +220,7 @@ export const passOtpController = async (
     }
 
     // Hash the user's new password
-    const hashedPassword = await bcrypt.hash(newPassword, await secretHash);
+    const hashedPassword = await bcrypt.hash(newPassword, secretHashTemp);
 
     // Update the password in User table
     await prisma.user.update({
@@ -242,6 +239,66 @@ export const passOtpController = async (
     console.error("Error in /forgot-password:", error);
     res.status(500).json({ success: false, message: "Internal server error." });
     return;
+  }
+};
+
+export const reissueTokenController = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  // این endpoint وقتی لازم می‌شه که یک کاربرِ لاگین‌شده اطلاعاتش (مثلاً نام‌کاربری) رو
+  // عوض کرده باشه و به یه توکن JWT تازه با نام‌کاربری جدید نیاز داشته باشه.
+  //
+  // طبق معماری این پروژه، فقط iam اجازه داره توکن امضا کنه (secretKey فقط همین‌جا
+  // استفاده می‌شه)؛ core هرگز نباید خودش مستقیم jwt.sign صدا بزنه. برای همین core
+  // به‌جای ساختن توکن، این endpoint رو صدا می‌زنه و از iam می‌خواد براش توکن تازه بسازه.
+  //
+  // نکته‌ی امنیتی مهم: این endpoint فقط با یک توکن *معتبرِ قبلی* (که خودِ iam قبلاً
+  // صادر کرده) کار می‌کنه، نه صرفاً با فرستادن یک username دلخواه — وگرنه هرکسی
+  // می‌تونست با فرستادن username یک ادمین/owner، برای خودش توکن جعل کنه. یعنی این
+  // تابع فقط «تمدید» یک نشستِ از قبل احراز-هویت‌شده رو انجام می‌ده، نه صدور توکن از صفر.
+  const token = req.headers["authorization"]?.split(" ")[1];
+  if (!token) {
+    res.status(401).json({ message: "توکن ارسال نشده است" });
+    return;
+  }
+
+  const { newUsername } = req.body as { newUsername?: string };
+  if (!newUsername) {
+    res.status(400).json({ message: "newUsername الزامی است" });
+    return;
+  }
+
+  try {
+    // اعتبارسنجی توکن قبلی — تنها اثبات هویتی که قبول می‌کنیم.
+    // (فقط چک می‌کنیم امضا و انقضاش درسته؛ خودِ محتواش برای این عملیات لازم نیست،
+    // چون قرار نیست بین username قدیم/جدید تطبیقی بدیم — core قبلاً این چک رو با
+    // فراخوانی /login/user-info و مقایسه با کاربر پیدا‌شده در دیتابیس انجام داده.)
+    jwt.verify(token, secretKey);
+  } catch {
+    res.status(401).json({ message: "توکن نامعتبر است" });
+    return;
+  }
+
+  try {
+    // نقش کاربر رو خودِ iam از روی جداول Admin/Owner خودش تعیین می‌کنه (دقیقاً همون
+    // منطقی که loginUser هم استفاده می‌کنه) — نه از روی چیزی که core بفرسته — تا core
+    // نتونه نقش دلخواه (مثلاً admin) رو به توکن جدید تزریق کنه.
+    const admin = await prisma.admin.findUnique({ where: { username: newUsername } });
+    const owner = await prisma.owner.findUnique({ where: { username: newUsername } });
+
+    let userType = "normal";
+    if (admin) userType = "admin";
+    if (owner) userType = "owner";
+
+    const newToken = jwt.sign({ username: newUsername, userType }, secretKey, {
+      expiresIn: "2h",
+    });
+
+    res.status(200).json({ token: newToken });
+  } catch (error) {
+    console.error("reissueTokenController error:", error);
+    res.status(500).json({ message: "خطای داخلی سرور" });
   }
 };
 

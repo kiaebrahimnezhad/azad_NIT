@@ -2,13 +2,11 @@ import { Request, Response } from "express";
 import axios from "axios";
 import { PrismaClient, Prisma } from "@prisma/client";
 import * as dotenv from "dotenv";
-import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
 const prisma = new PrismaClient();
 const iamPort = process.env.IAM_PORT || 3000;
-const secretKey = process.env.JWT_SECRET_KEY || ""; 
 
 export const getUserOverview = async (
   req: Request,
@@ -192,37 +190,43 @@ export const updateUserController = async (
       }
     }
 
-    // 3) Update the user itself
-    const updated = await prisma.user.update({
-      where: { username: currentUsername },
-      data: {
-        username:   newUsername ?? undefined,
-        first_name,
-        last_name,
-        father_name,
-        field,
-        student_id,
-        phone,
-        mail,
-      },
-      select: {
-        username: true,
-        first_name: true,
-        last_name: true,
-        father_name: true,
-        field: true,
-        student_id: true,
-        phone: true,
-        mail: true,
-      },
-    });
+    const userUpdateData = {
+      username:   newUsername ?? undefined,
+      first_name,
+      last_name,
+      father_name,
+      field,
+      student_id,
+      phone,
+      mail,
+    };
+    const userSelect = {
+      username: true,
+      first_name: true,
+      last_name: true,
+      father_name: true,
+      field: true,
+      student_id: true,
+      phone: true,
+      mail: true,
+    } as const;
 
-    // 4) If username changed, update in other tables as well
+    // 3+4) If username changed, update the User row itself AND every related
+    // table inside ONE transaction, so it's all-or-nothing. قبلاً آپدیت User
+    // (مرحله‌ی ۳) جدا و *قبل* از تراکنش مرحله‌ی ۴ اجرا می‌شد — یعنی اگه بین این
+    // دو مرحله خطایی پیش می‌اومد (مثلاً قطعی دیتابیس)، User با نام‌کاربری جدید
+    // آپدیت شده بود ولی پیام‌ها/ثبت‌نام‌ها/... همچنان به نام‌کاربری قدیمی اشاره
+    // می‌کردن — داده‌های یتیم و ناهماهنگ. حالا همه‌شون با هم توی یه تراکنش واحدن.
     if (newUsername && newUsername !== currentUsername) {
       const oldU = currentUsername;
-      const newU = updated.username;
+      const newU = newUsername;
 
       await prisma.$transaction([
+        prisma.user.update({
+          where: { username: currentUsername },
+          data: userUpdateData,
+          select: userSelect,
+        }),
         // Shop
         prisma.shop.updateMany({
           where: { username: oldU },
@@ -306,25 +310,32 @@ export const updateUserController = async (
         }),
       ]);
 
-      // 5) Create new token
-      let userType = 'normal';
-      if (await prisma.admin.findUnique({ where: { username: newU } })) userType = 'admin';
-      if (await prisma.owner.findUnique({ where: { username: newU } })) userType = 'owner';
-
-      const token = jwt.sign(
-        { username: newU, userType },
-        secretKey,
-        { expiresIn: '2h' }
+      // 5) Create new token: به‌جای این‌که core خودش مستقیم jwt.sign بزنه (که یعنی یک
+      // کپی دیگه از JWT_SECRET_KEY رو نگه داره)، از iam — تنها جایی که طبق معماری
+      // پروژه باید توکن امضا کنه — می‌خوایم توکن تازه‌ای برای نام‌کاربری جدید بسازه.
+      // توکن *قبلیِ* همین کاربر (که همین الان با getCurrentUsername تأییدش کردیم) رو
+      // به‌عنوان اثبات هویت جلو می‌فرستیم.
+      const requesterToken = req.headers["authorization"]?.split(" ")[1];
+      const { data: reissueData } = await axios.post(
+        `http://localhost:${iamPort}/login/reissue-token`,
+        { newUsername: newU },
+        { headers: { Authorization: `Bearer ${requesterToken}` } }
       );
 
       res.json({
         message: 'اطلاعات با موفقیت به‌روز شد',
-        token,
+        token: reissueData.token,
       });
       return;
     }
 
-    // If username remained unchanged
+    // If username remained unchanged, just update the User row (no cascade needed)
+    await prisma.user.update({
+      where: { username: currentUsername },
+      data: userUpdateData,
+      select: userSelect,
+    });
+
     res.json({ message: 'اطلاعات با موفقیت به‌روز شد' });
   } catch (err: any) {
     console.error(err);

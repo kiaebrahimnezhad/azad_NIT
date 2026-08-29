@@ -3,17 +3,13 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import * as dotenv from "dotenv";
-import sgMail from "@sendgrid/mail";
 import nodemailer from "nodemailer";
-
-sgMail.setApiKey("75Ahx9rW7eLCeuVoNjm4"); // Access Key ID
 
 const prisma = new PrismaClient();
 dotenv.config(); // Load environment variables
 
 const secretKey = process.env.JWT_SECRET_KEY || ""; // Read key value from .env
 const secretHashTemp = Number(process.env.HASH_SECRET_KEY) || 10; // Read key value from .env
-const secretHash = bcrypt.genSalt(secretHashTemp);
 let generatedOtp = 1;
 
 export const loginUser = async (username: string, password: string) => {
@@ -67,28 +63,21 @@ export const signUpUser = async (
     }
   }
 
+  // Check for existing user by mail.
+  // نکته‌ی مهم: قبلاً این چک دوبار (با دو بلوک تقریباً یکسان) نوشته شده بود؛ بلوک اول
+  // موقع حذف رکورد قدیمی از کلید اشتباه (username — یعنی نام‌کاربریِ ثبت‌نام *جدید*،
+  // نه نام‌کاربری همون رکورد قدیمی که پیدا شده بود) استفاده می‌کرد. چون نام‌کاربری
+  // جدید هنوز هیچ‌جا وجود نداره، آن حذف همیشه با خطا می‌ترکید و کل ثبت‌نام رو خراب
+  // می‌کرد — دقیقاً وقتی یه ایمیل قبلاً با یه نام‌کاربریِ متفاوتِ تأییدنشده استفاده شده
+  // باشه. کلید درست برای حذف این رکورد، mail هست (یا existingUserByMail.username)،
+  // نه username. این دو بلوک تکراری با هم ادغام و اصلاح شدن.
   const existingUserByMail = await prisma.user.findUnique({ where: { mail } });
   if (existingUserByMail) {
     if (existingUserByMail.verified) {
       // If user found and verified=true, return error
       throw new Error("Email already exists. Please log in.");
     } else {
-      // Otherwise (verified=false), delete the record
-      await prisma.user.delete({
-        where: { username },
-      });
-    }
-  }
-
-  const existingMail = await prisma.user.findUnique({ where: { mail } });
-  if (existingMail) {
-    if (existingMail.verified) {
-      // If user found and verified=true, return error
-      // console.log("hi");
-      throw new Error("Email already exists. Please log in.");
-    } else {
-      // Otherwise (verified=false), delete the record
-      // console.log("hello");
+      // Otherwise (verified=false), delete the stale record
       await prisma.user.delete({
         where: { mail },
       });
@@ -108,7 +97,7 @@ export const signUpUser = async (
       expiration: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiration
     },
   });
-  const hashedPassword = await bcrypt.hash(password, await secretHash);
+  const hashedPassword = await bcrypt.hash(password, secretHashTemp);
 
   await prisma.user.create({
     data: {

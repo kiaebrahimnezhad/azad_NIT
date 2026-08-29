@@ -121,6 +121,43 @@ describe('CORE E2E', () => {
     expect(res.body.eid).toBe(700);
   });
 
+  test('POST /exam/submit => 200 with passed:false when the score is below the minimum', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'student1', userType: 'normal' } });
+    (prismaMock.exam.findUnique as any).mockResolvedValue({
+      eid: 50, min_score: 15, courseCid: 7,
+      questions: [
+        { qid: 1, ans: 2 },
+        { qid: 2, ans: 3 },
+      ],
+    });
+    (prismaMock.course.findUnique as any).mockResolvedValue({ name: 'Course A' });
+    (prismaMock.student.findUnique as any).mockResolvedValue({ username: 'student1', cid: 7 });
+    (prismaMock.user.findUnique as any).mockResolvedValue({ username: 'student1', first_name: 'A', last_name: 'B' });
+    (prismaMock.$transaction as any).mockResolvedValue(true);
+
+    const res = await request(app)
+      .post('/exam/submit')
+      .set(AUTH)
+      .send({ eid: 50, answers: [{ qid: 1, ans: 1 }, { qid: 2, ans: 1 }] }); // هردو غلط
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(expect.objectContaining({ success: true, passed: false }));
+  });
+
+  test('POST /exam/submit => 500 with a clean JSON error when a DB lookup fails', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'student1', userType: 'normal' } });
+    (prismaMock.exam.findUnique as any).mockRejectedValue(new Error('DB connection lost'));
+
+    const res = await request(app)
+      .post('/exam/submit')
+      .set(AUTH)
+      .send({ eid: 50, answers: [] });
+
+    // قبلاً این خطا اصلاً گرفته نمی‌شد و درخواست بدون پاسخ JSON درست می‌ترکید
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual(expect.objectContaining({ success: false }));
+  });
+
   test('GET /admin/exam-message (admin) => 200 + messages array', async () => {
     (prismaMock.examMessage.findMany as any).mockResolvedValue([
       { id: 11, sender: 's1', reciver: 'tester', eid: 700, text: 'msg1', date: new Date() },
@@ -243,6 +280,47 @@ describe('CORE E2E', () => {
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body[0]).toHaveProperty('username');
     expect(res.body[0]).toHaveProperty('messageNumber');
+  });
+
+  test('POST /courses => rotates through admins across consecutive course submissions', async () => {
+    (axios.get as jest.Mock)
+      .mockResolvedValueOnce({ data: { username: 'teacher1' } })
+      .mockResolvedValueOnce({ data: { username: 'teacher1' } });
+    (prismaMock.admin.findMany as any).mockResolvedValue([
+      { username: 'admin1' },
+      { username: 'admin2' },
+    ]);
+    (prismaMock.course.findFirst as any).mockResolvedValue(null);
+    (prismaMock.course.create as any).mockResolvedValue({});
+    (prismaMock.time.createMany as any).mockResolvedValue({ count: 1 });
+    (prismaMock.courseRequester.create as any).mockResolvedValue({});
+    (prismaMock.courseMessage.create as any).mockResolvedValue({});
+
+    const submitCourse = () =>
+      request(app)
+        .post('/courses')
+        .set(AUTH)
+        .field('start_time', '2025-01-01T00:00:00.000Z')
+        .field('end_time', '2025-01-02T00:00:00.000Z')
+        .field('start_sign_up', '2024-12-01T00:00:00.000Z')
+        .field('end_sign_up', '2024-12-25T00:00:00.000Z')
+        .field('price', '1000')
+        .field('field1', 'CS')
+        .field('name', 'Course A')
+        .field('times', JSON.stringify([{ day: 'Sat', start_time: 480, end_time: 600 }]))
+        .attach('image', Buffer.from('fake-image-bytes'), 'test.png');
+
+    await submitCourse();
+    await submitCourse();
+
+    const calls = (prismaMock.courseMessage.create as jest.Mock).mock.calls;
+    expect(calls).toHaveLength(2);
+    const reciver1 = calls[0][0].data.reciver;
+    const reciver2 = calls[1][0].data.reciver;
+    expect(['admin1', 'admin2']).toContain(reciver1);
+    expect(['admin1', 'admin2']).toContain(reciver2);
+    // نکته‌ی اصلی همینه: دو تماس پشت‌سرهم نباید به یه ادمین ثابت برن
+    expect(reciver1).not.toBe(reciver2);
   });
 
   // ----------------- Admin/Course APIs -----------------
@@ -422,9 +500,66 @@ describe('CORE E2E', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       // سرور باید مبلغ واقعیِ محاسبه‌شده از سبد خرید (۱۵۰٬۰۰۰) رو به زرین‌پال بفرسته، نه عدد دستکاری‌شده
+      // و آدرس بازگشت (callback_url) هم باید یه مقدار واقعی و معتبر باشه، نه undefined
+      // (رفع باگ عدم تطابق اسم process.env.BASE_URL با .env)
       expect(axios.post).toHaveBeenCalledWith(
         'https://api.zarinpal.com/pg/v4/payment/request.json',
-        expect.objectContaining({ amount: 150000 })
+        expect.objectContaining({
+          amount: 150000,
+          callback_url: 'http://localhost:5170/result',
+        })
+      );
+    } finally {
+      process.env.ZARINPAL_MERCHANT_ID = originalMerchantId;
+    }
+  });
+
+  test('POST /payment/pay (real gateway) => enrolls directly without Zarinpal when the whole basket is free', async () => {
+    const originalMerchantId = process.env.ZARINPAL_MERCHANT_ID;
+    process.env.ZARINPAL_MERCHANT_ID = 'realmerchantid';
+
+    try {
+      (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'buyer', userType: 'normal' } });
+      (prismaMock.shop.findMany as any).mockResolvedValue([{ cid: 20 }, { cid: 21 }]);
+      (prismaMock.course.findMany as any).mockResolvedValue([
+        { cid: 20, price: 0 },
+        { cid: 21, price: 0 },
+      ]);
+      (prismaMock.$transaction as any).mockResolvedValue(true);
+
+      const res = await request(app).post('/payment/pay').set(AUTH).send({ totalPrice: 0 });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(expect.objectContaining({ success: true, free: true }));
+      expect(axios.post).not.toHaveBeenCalled(); // اصلاً نباید سراغ زرین‌پال بره
+    } finally {
+      process.env.ZARINPAL_MERCHANT_ID = originalMerchantId;
+    }
+  });
+
+  test('POST /payment/pay (real gateway) => still goes through Zarinpal for a mixed free+paid basket, charging only the paid part', async () => {
+    const originalMerchantId = process.env.ZARINPAL_MERCHANT_ID;
+    process.env.ZARINPAL_MERCHANT_ID = 'realmerchantid';
+
+    try {
+      (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'buyer', userType: 'normal' } });
+      (prismaMock.shop.findMany as any).mockResolvedValue([{ cid: 20 }, { cid: 21 }, { cid: 22 }]);
+      (prismaMock.course.findMany as any).mockResolvedValue([
+        { cid: 20, price: 0 },
+        { cid: 21, price: 0 },
+        { cid: 22, price: 75000 },
+      ]);
+      (axios.post as jest.Mock).mockResolvedValueOnce({
+        data: { data: { code: 100, authority: 'AUTH_MIXED' } },
+      });
+
+      const res = await request(app).post('/payment/pay').set(AUTH).send({ totalPrice: 0 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.paymentUrl).toContain('AUTH_MIXED'); // یعنی واقعاً از مسیر زرین‌پال رفته، نه مسیر رایگان
+      expect(axios.post).toHaveBeenCalledWith(
+        'https://api.zarinpal.com/pg/v4/payment/request.json',
+        expect.objectContaining({ amount: 75000 })
       );
     } finally {
       process.env.ZARINPAL_MERCHANT_ID = originalMerchantId;
@@ -558,6 +693,39 @@ describe('CORE E2E', () => {
   test('GET /user/overview => 401 when no token', async () => {
     const res = await request(app).get('/user/overview');
     expect(res.status).toBe(401);
+  });
+
+  test('POST /user/update-user => 200 with a new token issued by iam when username changes', async () => {
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { username: 'oldUser', userType: 'normal' } });
+    (prismaMock.user.findUnique as any).mockResolvedValue(null); // بدون تداخل نام‌کاربری/ایمیل
+    (prismaMock.user.update as any).mockResolvedValue({
+      username: 'newUser', first_name: 'A', last_name: 'B', father_name: 'C',
+      field: 'CS', student_id: '1', phone: '0912', mail: 'a@b.com',
+    });
+    (prismaMock.$transaction as any).mockResolvedValue(true);
+    (axios.post as jest.Mock).mockResolvedValueOnce({ data: { token: 'brand-new-jwt' } });
+
+    const res = await request(app)
+      .post('/user/update-user')
+      .set(AUTH)
+      .send({
+        username: 'newUser', first_name: 'A', last_name: 'B', father_name: 'C',
+        field: 'CS', student_id: '1', phone: '0912', mail: 'a@b.com',
+      });
+
+    expect(res.status).toBe(200);
+    // توکن باید همونی باشه که iam برگردونده، نه چیزی که core خودش امضا کرده باشه
+    expect(res.body.token).toBe('brand-new-jwt');
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/login/reissue-token'),
+      { newUsername: 'newUser' },
+      expect.objectContaining({ headers: { Authorization: 'Bearer faketoken' } })
+    );
+    // خودِ آپدیت جدول User باید *داخل* همون تراکنشی باشه که جدول‌های مرتبط رو
+    // آپدیت می‌کنه (نه یه فراخوانی جدا و قبل از اون) — یعنی همه یا هیچ‌کدوم.
+    // ۱ آپدیت User + ۱۷ آپدیت جدول‌های مرتبط = ۱۸ آیتم توی آرایه‌ی $transaction.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect((prismaMock.$transaction as jest.Mock).mock.calls[0][0]).toHaveLength(18);
   });
 
   test('GET /user/get-message => 200 when messages exist', async () => {

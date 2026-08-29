@@ -7,11 +7,9 @@ import path from "path";
 
 dotenv.config(); // Load environment variables
 
-let adminIndex = 0; // Read key from .env
+let adminIndex = 0; // شمارنده‌ی چرخشی برای انتخاب نوبتی ادمین‌ها (در حافظه‌ی سرور)
 const prisma = new PrismaClient();
 const iamPort = process.env.IAM_PORT || 3000; // Read key from .env
-const ZARINPAL_MERCHANT_ID = process.env.ZARINPAL_MERCHANT_ID!;
-const CALLBACK_BASE_URL = process.env.BASE_URL!; // e.g., "https://your-domain.com"
 
 export const courseControll = async (
   req: Request,
@@ -158,18 +156,30 @@ export const courseControll = async (
       data: { username, cid: newCid },
     });
 
-    // 7.5) Send message to next admin
-    const admins = await prisma.admin.findMany({ select: { username: true } });
+    // 7.5) Send message to next admin (چرخشی بین ادمین‌ها)
+    // orderBy لازمه تا ترتیب لیست بین فراخوانی‌های مختلف ثابت بمونه — وگرنه حتی با
+    // شمارنده‌ی درست هم «ادمین شماره ۲» ممکنه هر بار به یه نفر متفاوت اشاره کنه.
+    const admins = await prisma.admin.findMany({
+      orderBy: { username: "asc" },
+      select: { username: true },
+    });
     if (admins.length > 0) {
-      let adminIndex = 0; // You can use a global variable or table to maintain this
-      const adminUsername = admins[adminIndex % admins.length]!.username;
+      // نکته‌ی مهم: اینجا عمداً متغیر محلی جدیدی به اسم adminIndex تعریف نکردیم —
+      // قبلاً همین‌جا `let adminIndex = 0` محلی تعریف شده بود که متغیر سراسری بالای
+      // فایل رو سایه می‌نداخت (shadowing) و باعث می‌شد همیشه از صفر شروع بشه، یعنی
+      // همیشه ادمین اول انتخاب بشه، نه چرخشی. حالا مستقیم به همون متغیر سراسری
+      // adminIndex می‌خونیم/می‌نویسیم — دقیقاً همون الگویی که در examController.ts
+      // (adminCounter) درست پیاده شده.
+      adminIndex = adminIndex % admins.length;
+      const adminUsername = admins[adminIndex]!.username;
+      adminIndex++; // دفعه‌ی بعد، نوبت ادمین بعدی باشه
       await prisma.courseMessage.create({
         data: {
           sender: username,
           reciver: adminUsername,
           cid: newCid,
           text: message_text ?? "",
-          date:    new Date(), 
+          date:    new Date(),
         },
       });
     }
@@ -244,61 +254,6 @@ export const getCourseControll = async (
     });
   }
 };
-
-export const registerCourseControll = async (req: Request, res: Response) => {
-  const { courseId } = req.body;
-  const token = req.headers["authorization"]?.split(" ")[1];
-  if (!token) res.status(401).json({ message: "Token not provided" });
-
-  // 1.1) Authenticate user
-  const { data: userInfo } = await axios.get(
-    `http://localhost:${iamPort}/login/user-info`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-  const username = userInfo.username as string;
-
-  // 1.2) Find course
-  const course = await prisma.course.findUnique({ where: { cid: courseId } });
-  if (!course) res.status(404).json({ message: "Course not found" });
-
-  // 1.3) Zero price => direct registration
-  if (course!.price === 0) {
-    await prisma.student.create({ data: { username, cid: courseId } });
-    res.status(200).json({ message: "Registration successful (free)" });
-  }
-
-  // 1.4) Start payment via Zarinpal
-  try {
-    const callback_url = `${CALLBACK_BASE_URL}/payment/callback?username=${encodeURIComponent(
-      username
-    )}&courseId=${courseId}`;
-    const { data: payReq } = await axios.post(
-      "https://api.zarinpal.com/pg/v4/payment/request.json",
-      {
-        merchant_id: ZARINPAL_MERCHANT_ID,
-        amount: course!.price,
-        callback_url,
-        description: `Payment for course ${course!.name}`,
-      }
-    );
-    if (payReq.data.code === 100) {
-      // Return payment URL
-      const authority = payReq.data.authority;
-      const paymentUrl = `https://www.zarinpal.com/pg/StartPay/${authority}`;
-      res.status(200).json({ paymentUrl });
-    } else {
-      res
-        .status(502)
-        .json({ message: "Error creating payment order", code: payReq.data.code });
-    }
-  } catch (err) {
-    console.error("Zarinpal request error:", err);
-    res.status(502).json({ message: "Network error to payment gateway" });
-  }
-};
-
 
 export const certificateController =  async (req: Request, res: Response) => {
   try {

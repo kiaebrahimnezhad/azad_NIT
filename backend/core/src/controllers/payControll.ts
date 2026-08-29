@@ -9,6 +9,7 @@ let adminIndex = 0; // Read key value from .env
 const prisma = new PrismaClient();
 const iamPort = process.env.IAM_PORT || 3000; // Read key value from .env
 const MERCHANT_ID = process.env.ZARINPAL_MERCHANT_ID!;
+// آدرس بازگشت از زرین پال
 const CALLBACK_URL = process.env.BASE_URL!; // e.g. "https://your-domain.com"
 
 // تابع (نه ثابت) عمداً استفاده شده تا مقدار زنده‌ی process.env در هر درخواست خونده بشه؛
@@ -51,6 +52,26 @@ export const payController = async (req: Request, res: Response) => {
     const cids = basketItems.map((item) => item.cid);
     const courses = await prisma.course.findMany({ where: { cid: { in: cids } } });
     const totalPrice = courses.reduce((sum, c) => sum + Number(c.price), 0);
+
+    // اگر جمع کل سبد صفر باشه (یعنی همه‌ی دوره‌های داخلش رایگانن)، نیازی به درگاه
+    // پرداخت نیست — مستقیم ثبت‌نام کن. توجه: این با «حذف دوره‌های رایگان از جمع» فرق
+    // داره — اگه سبد ترکیبی از دوره‌ی رایگان و پولی باشه، جمع کل صفر نمی‌شه و همچنان
+    // باید از طریق زرین‌پال برای همون مبلغ واقعی (که خودش شامل صفر رایگان‌ها هم هست) اقدام کرد.
+    if (totalPrice === 0) {
+      const studentData = basketItems.map((item) => ({ username, cid: item.cid }));
+
+      await prisma.$transaction([
+        prisma.student.createMany({ data: studentData, skipDuplicates: true }),
+        prisma.shop.deleteMany({ where: { username } }),
+      ]);
+
+      res.json({
+        success: true,
+        free: true,
+        message: "ثبت‌نام رایگان با موفقیت انجام شد",
+      });
+      return;
+    }
 
     /* ---- 3) Request to Zarinpal ---- */
     const { data } = await axios.post(
@@ -153,48 +174,6 @@ export const rollBack = async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error(err.response?.data || err);
     res.status(500).json({ success: false, message: "خطا در پردازش پرداخت" });
-  }
-};
-
-// 2) Zarinpal CALLBACK route
-export const paymentCallbackControll = async (req: Request, res: Response) => {
-  const { Status, Authority, username, courseId } = req.query as Record<
-    string,
-    string
-  >;
-  if (Status !== "OK") {
-    res.status(400).send("پرداخت ناموفق بود یا کاربر پرداخت را لغو کرد");
-  }
-
-  // Verify payment
-  try {
-    const { data: verifyRes } = await axios.post(
-      "https://api.zarinpal.com/pg/v4/payment/verify.json",
-      {
-        merchant_id: MERCHANT_ID,
-        authority: Authority,
-        amount: Number(
-          await prisma.course
-            .findUnique({ where: { cid: Number(courseId) } })
-            .then((c) => c!.price)
-        ),
-      }
-    );
-    if (verifyRes.data.code === 100) {
-      // Payment confirmed => registration
-      await prisma.student.create({
-        data: {
-          username: username!,
-          cid: Number(courseId),
-        },
-      });
-      res.send("پرداخت موفق بود و ثبت‌نام انجام شد");
-    } else {
-      res.status(400).send(`خطا در وریفای پرداخت: ${verifyRes.data.message}`);
-    }
-  } catch (err) {
-    console.error("Zarinpal verify error:", err);
-    res.status(500).send("خطای داخلی در وریفای پرداخت");
   }
 };
 

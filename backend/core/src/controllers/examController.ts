@@ -5,6 +5,7 @@ import * as dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import util from "util";
+import { randomBytes } from "crypto";
 import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import libre from "libreoffice-convert";
@@ -465,154 +466,168 @@ export const submitExamController = async (
     return;
   }
 
-  /* 3) Fetch exam + course + questions ----------------------- */
-  const exam = await prisma.exam.findUnique({
-    where: { eid },
-    include: { course: true, questions: true },
-  });
-  if (!exam) {
-    res.status(404).json({ message: "Exam not found" });
-    return;
-  }
-  const course = await prisma.course.findUnique({
-    where: { cid: exam.courseCid },
-    select: { name: true }, // We only select the course name
-  });
-
-  /* 4) Check if student is enrolled in the course ----------------------- */
-  const enrolled = await prisma.student.findUnique({
-    where: { username_cid: { username, cid: exam.courseCid } },
-  });
-  if (!enrolled) {
-    res
-      .status(403)
-      .json({ message: "Only students of this course can take the exam" });
-    return;
-  }
-
-  /* 4.1) Fetch user info --------------------------- */
-  const user = await prisma.user.findUnique({ where: { username } });
-  if (!user) {
-    res.status(404).json({ message: "User info not found" });
-    return;
-  }
-
-  /* 5) Convert answers to Map ---------------------------- */
-  const answerMap = new Map<number, number>();
-  for (const a of answers) {
-    if (a.ans >= 1 && a.ans <= 5) answerMap.set(a.qid, a.ans);
-  }
-
-  /* 6) Calculate score ------------------------------------- */
-  let raw = 0;
-  const answerRows: { username: string; qid: number; ans: number | null }[] =
-    [];
-
-  for (const q of exam.questions) {
-    const given = answerMap.get(q.qid) ?? null;
-    if (given !== null) {
-      if (given === q.ans) raw += 3;
-      else raw -= 1;
-    }
-    answerRows.push({ username, qid: q.qid, ans: given });
-  }
-
-  const maxRaw = exam.questions.length * 3;
-  const score = Math.max(0, (raw / Math.max(1, maxRaw)) * 20);
-
-  /* 7) Transaction: Answer + Score -------------------------- */
-  await prisma.$transaction(async (tx) => {
-    // await tx.answer.deleteMany({
-    //   where: { qid: { in: exam.questions.map((q) => q.qid) }, username },
-    // });
-    // await tx.answer.createMany({ data: answerRows.filter((r) => r.ans !== null) });
-    await tx.score.upsert({
-      where: { username_eid: { username, eid } },
-      update: { score },
-      create: { username, eid, score },
+  // از اینجا به بعد (پیدا کردن آزمون/دانشجو/کاربر و محاسبه‌ی نمره) قبلاً هیچ try/catch
+  // نداشت — یعنی هر خطای دیتابیس (مثلاً یه قطعی لحظه‌ای اتصال) به‌جای یه پاسخ JSON
+  // تمیز، یه exception مدیریت‌نشده می‌شد. چون این مسیر برای *هر* ارسال آزمونی اجرا
+  // می‌شه (نه یه حالت نادر)، این شکاف اهمیت واقعی داشت.
+  try {
+    /* 3) Fetch exam + course + questions ----------------------- */
+    const exam = await prisma.exam.findUnique({
+      where: { eid },
+      include: { course: true, questions: true },
     });
-  });
-
-  /* 8) If passed → Generate certificate ------------------------ */
-  if (score >= exam.min_score) {
-    try {
-      // 8.1) Template file path (DOCX)
-      const templatePath = path.join(
-        __dirname,
-        "../../uploads",
-        "certification.docx"
-      );
-      const templateBuf = fs.readFileSync(templatePath);
-
-      // 8.2) Fill tags
-      const zip = new PizZip(templateBuf);
-      const doc = new Docxtemplater(zip, {
-        paragraphLoop: true,
-        linebreaks: true,
-      });
-      const fullDateFa = toJalaliString(new Date());
-      doc.setData({
-        first_name: user.first_name ?? "",
-        last_name: user.last_name ?? "",
-        course: course?.name ?? "",
-        date: fullDateFa,
-        score: score,
-      });
-      doc.render();
-      const docxBuf = doc.getZip().generate({ type: "nodebuffer" });
-
-      // 8.3) Convert to PDF with LibreOffice
-      const pdfBuf: Buffer = await convertAsync(docxBuf, ".pdf", undefined);
-
-      // 8.4) Save PDF file in uploads/certificates
-      const outDir = path.join(__dirname, "../../uploads/certificates");
-      fs.mkdirSync(outDir, { recursive: true });
-      const fileBase = `${username}-${eid}-${Date.now()}`;
-      const outPath = path.join(outDir, `${fileBase}.pdf`);
-      fs.writeFileSync(outPath, pdfBuf);
-
-      // 8.5) Public path (for download)
-      const publicPath = `/uploads/certificates/${fileBase}.pdf`;
-
-      // 8.6) Save path in Postgres (assumes Certificate model exists)
-      // If not, create a model like:
-      // model Certificate { id Int @id @default(autoincrement()) username String eid Int file_path String created_at DateTime @default(now()) @@unique([username, eid]) }
-      await prisma.certificate.upsert({
-        where: { username_eid: { username, eid } },
-        update: { file_path: publicPath },
-        create: { username, eid, file_path: publicPath },
-      });
-
-      res.status(200).json({
-        success: true,
-        passed: true,
-        score,
-        message: `Congratulations! You passed with score ${score.toFixed(
-          2
-        )}. Certificate issued.`,
-      });
-      return;
-    } catch (e) {
-      console.error("Certificate generation error:", e);
-      // Even if PDF fails, return pass result
-      res.status(200).json({
-        success: true,
-        passed: true,
-        score,
-        message:
-          "You passed, but there was an issue generating the certificate. Please try again.",
-      });
+    if (!exam) {
+      res.status(404).json({ message: "Exam not found" });
       return;
     }
-  }
+    const course = await prisma.course.findUnique({
+      where: { cid: exam.courseCid },
+      select: { name: true }, // We only select the course name
+    });
 
-  /* 9) Failed */
-  res.status(200).json({
-    success: true,
-    passed: false,
-    score,
-    message: `Your score is ${score.toFixed(2)}; minimum required is ${exam.min_score}.`,
-  });
+    /* 4) Check if student is enrolled in the course ----------------------- */
+    const enrolled = await prisma.student.findUnique({
+      where: { username_cid: { username, cid: exam.courseCid } },
+    });
+    if (!enrolled) {
+      res
+        .status(403)
+        .json({ message: "Only students of this course can take the exam" });
+      return;
+    }
+
+    /* 4.1) Fetch user info --------------------------- */
+    const user = await prisma.user.findUnique({ where: { username } });
+    if (!user) {
+      res.status(404).json({ message: "User info not found" });
+      return;
+    }
+
+    /* 5) Convert answers to Map ---------------------------- */
+    const answerMap = new Map<number, number>();
+    for (const a of answers) {
+      if (a.ans >= 1 && a.ans <= 5) answerMap.set(a.qid, a.ans);
+    }
+
+    /* 6) Calculate score ------------------------------------- */
+    let raw = 0;
+    const answerRows: { username: string; qid: number; ans: number | null }[] =
+      [];
+
+    for (const q of exam.questions) {
+      const given = answerMap.get(q.qid) ?? null;
+      if (given !== null) {
+        if (given === q.ans) raw += 3;
+        else raw -= 1;
+      }
+      answerRows.push({ username, qid: q.qid, ans: given });
+    }
+
+    const maxRaw = exam.questions.length * 3;
+    const score = Math.max(0, (raw / Math.max(1, maxRaw)) * 20);
+
+    /* 7) Transaction: Answer + Score -------------------------- */
+    await prisma.$transaction(async (tx) => {
+      // await tx.answer.deleteMany({
+      //   where: { qid: { in: exam.questions.map((q) => q.qid) }, username },
+      // });
+      // await tx.answer.createMany({ data: answerRows.filter((r) => r.ans !== null) });
+      await tx.score.upsert({
+        where: { username_eid: { username, eid } },
+        update: { score },
+        create: { username, eid, score },
+      });
+    });
+
+    /* 8) If passed → Generate certificate ------------------------ */
+    if (score >= exam.min_score) {
+      try {
+        // 8.1) Template file path (DOCX)
+        const templatePath = path.join(
+          __dirname,
+          "../../uploads",
+          "certification.docx"
+        );
+        const templateBuf = fs.readFileSync(templatePath);
+
+        // 8.2) Fill tags
+        const zip = new PizZip(templateBuf);
+        const doc = new Docxtemplater(zip, {
+          paragraphLoop: true,
+          linebreaks: true,
+        });
+        const fullDateFa = toJalaliString(new Date());
+        doc.setData({
+          first_name: user.first_name ?? "",
+          last_name: user.last_name ?? "",
+          course: course?.name ?? "",
+          date: fullDateFa,
+          score: score,
+        });
+        doc.render();
+        const docxBuf = doc.getZip().generate({ type: "nodebuffer" });
+
+        // 8.3) Convert to PDF with LibreOffice
+        const pdfBuf: Buffer = await convertAsync(docxBuf, ".pdf", undefined);
+
+        // 8.4) Save PDF file in uploads/certificates
+        // نکته‌ی امنیتی: اسم فایل عمداً از یه توکن کاملاً تصادفی ساخته می‌شه، نه از
+        // نام‌کاربری/eid — چون این پوشه بدون نیاز به لاگین سرو می‌شه (public/uploads)،
+        // اگه اسم فایل قابل‌حدس بود (مثلاً شامل نام‌کاربری)، هرکسی می‌تونست گواهی افراد
+        // دیگه رو حدس بزنه و دانلود کنه. رفع کامل این مشکل (بردن گواهی‌ها به مسیر خصوصی
+        // + یه API دانلود دارای احراز هویت) به لیست بهبودهای آینده‌ی بک‌اند اضافه شده.
+        const outDir = path.join(__dirname, "../../uploads/certificates");
+        fs.mkdirSync(outDir, { recursive: true });
+        const fileBase = randomBytes(24).toString("hex");
+        const outPath = path.join(outDir, `${fileBase}.pdf`);
+        fs.writeFileSync(outPath, pdfBuf);
+
+        // 8.5) Public path (for download)
+        const publicPath = `/uploads/certificates/${fileBase}.pdf`;
+
+        // 8.6) Save path in Postgres (assumes Certificate model exists)
+        // If not, create a model like:
+        // model Certificate { id Int @id @default(autoincrement()) username String eid Int file_path String created_at DateTime @default(now()) @@unique([username, eid]) }
+        await prisma.certificate.upsert({
+          where: { username_eid: { username, eid } },
+          update: { file_path: publicPath },
+          create: { username, eid, file_path: publicPath },
+        });
+
+        res.status(200).json({
+          success: true,
+          passed: true,
+          score,
+          message: `Congratulations! You passed with score ${score.toFixed(
+            2
+          )}. Certificate issued.`,
+        });
+        return;
+      } catch (e) {
+        console.error("Certificate generation error:", e);
+        // Even if PDF fails, return pass result
+        res.status(200).json({
+          success: true,
+          passed: true,
+          score,
+          message:
+            "You passed, but there was an issue generating the certificate. Please try again.",
+        });
+        return;
+      }
+    }
+
+    /* 9) Failed */
+    res.status(200).json({
+      success: true,
+      passed: false,
+      score,
+      message: `Your score is ${score.toFixed(2)}; minimum required is ${exam.min_score}.`,
+    });
+  } catch (err) {
+    console.error("submitExamController error:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
 };
 
 export const getQuestionByEid = async (

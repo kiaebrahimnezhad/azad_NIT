@@ -7,7 +7,8 @@ import {
   verifyOtpController,
   passController,
   passOtpController,
-  resetPassController
+  resetPassController,
+  reissueTokenController
 } from "../controllers/authController";
 
 export const authRoutes = express.Router();
@@ -51,3 +52,6 @@ authRoutes.post(
   },
   passOtpController
 );
+
+// برای صدور توکن تازه بعد از تغییر نام‌کاربری (فراخوانی‌شده توسط core، نه مستقیم فرانت)
+authRoutes.post("/reissue-token", reissueTokenController);

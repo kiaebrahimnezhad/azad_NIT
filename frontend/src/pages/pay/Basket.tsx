@@ -32,6 +32,7 @@ interface ActionResponse {
 interface PaymentResponse {
   success: boolean;
   paymentUrl?: string;
+  free?: boolean;
   message?: string;
 }
 
@@ -85,6 +86,10 @@ function Basket() {
       const { data } = await coreApi.post<PaymentResponse>('/payment/pay', { totalPrice });
       if (data.success && data.paymentUrl) {
         window.location.href = data.paymentUrl;
+      } else if (data.success && data.free) {
+        // سبد کاملاً رایگان بود؛ نیازی به درگاه پرداخت نبود و مستقیم ثبت‌نام شد
+        setToast({ ok: true, text: data.message || '✅ ثبت‌نام رایگان با موفقیت انجام شد' });
+        await fetchBasket();
       } else {
         setToast({ ok: false, text: data.message || 'خطا در ایجاد پرداخت' });
       }

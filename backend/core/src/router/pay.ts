@@ -1,11 +1,6 @@
 import express from "express";
 import { Request, Response } from "express";
 import {
-  courseControll,
-  registerCourseControll,
-} from "../controllers/courseControll";
-import {
-  paymentCallbackControll,
   addToBasketController,
   getBasketController,
   removeBasketController,
@@ -29,14 +24,6 @@ payRouter.post(
     next();
   },
   rollBack
-);
-
-payRouter.get(
-  "/callback",
-  (req, res, next) => {
-    next();
-  },
-  paymentCallbackControll
 );
 
 payRouter.post(

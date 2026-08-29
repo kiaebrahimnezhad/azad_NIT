@@ -2,10 +2,8 @@ import express from "express";
 import { Request, Response } from "express";
 import {
   courseControll,
-  registerCourseControll,
   certificateController
 } from "../controllers/courseControll";
-import { paymentCallbackControll } from "../controllers/payControll";
 import { searchCoursesControll } from "../controllers/searchControll";
 import { upload } from "../../middleware/upload";
 import {
@@ -27,14 +25,6 @@ courseRouter.post("/", upload.single("image"), courseControll);
 
 courseRouter.post("/certificate",
   certificateController
-);
-
-userRouter.post(
-  "/register-course",
-  (req, res, next) => {
-    next();
-  },
-  registerCourseControll
 );
 
 userRouter.post(
