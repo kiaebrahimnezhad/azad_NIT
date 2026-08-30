@@ -719,7 +719,14 @@ describe('CORE E2E', () => {
     expect(axios.post).toHaveBeenCalledWith(
       expect.stringContaining('/login/reissue-token'),
       { newUsername: 'newUser' },
-      expect.objectContaining({ headers: { Authorization: 'Bearer faketoken' } })
+      expect.objectContaining({
+        // این هدر اثبات می‌کنه درخواست واقعاً از core میاد، نه یه کاربر دیگه که
+        // مستقیم iam رو صدا زده — بدون این هدر iam این درخواست رو رد می‌کنه.
+        headers: expect.objectContaining({
+          Authorization: 'Bearer faketoken',
+          'X-Internal-Secret': process.env.INTERNAL_SERVICE_SECRET,
+        }),
+      })
     );
     // خودِ آپدیت جدول User باید *داخل* همون تراکنشی باشه که جدول‌های مرتبط رو
     // آپدیت می‌کنه (نه یه فراخوانی جدا و قبل از اون) — یعنی همه یا هیچ‌کدوم.

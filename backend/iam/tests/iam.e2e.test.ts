@@ -13,6 +13,7 @@ describe('IAM E2E', () => {
   const newPassword1 = 'N3wP@ss1!';
   const newPassword2 = 'N3wP@ss2!';
   const expiredOtpMail = `user_${unique}_expired@example.com`;
+  const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET!; // باید با .env هماهنگ باشه
   const staleUsername = `stale_${unique}`;
   const renewedUsername = `renewed_${unique}`;
   const sharedMail = `shared_${unique}@example.com`;
@@ -202,37 +203,55 @@ describe('IAM E2E', () => {
     expect(loginRes.body).toHaveProperty('token');
   });
 
-  it('POST /login/reissue-token => 401 when no token', async () => {
+  it('POST /login/reissue-token => 403 when the internal service secret is missing, even with a fully valid token', async () => {
+    // این تست دقیقاً همون آسیب‌پذیری بحرانی‌ای رو بازتولید می‌کنه که خودِ کاربر حین
+    // تست واقعی پیدا کرد: یه کاربر عادیِ کاملاً معتبر (همین `token`) سعی می‌کنه
+    // مستقیم (نه از طریق core) برای یه نام‌کاربری دلخواه (اینجا شبیه‌سازی‌شده با یه
+    // نام‌کاربری فرضی ادمین) توکن جدید بگیره. باید همیشه رد بشه، مهم نیست
+    // newUsername چی باشه، چون اصلاً نباید بدون کلید داخلی به این مرحله برسه.
     const res = await request(app)
       .post('/login/reissue-token')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ newUsername: 'some_admin_username' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /login/reissue-token => 401 when no token (with a valid internal secret)', async () => {
+    const res = await request(app)
+      .post('/login/reissue-token')
+      .set('X-Internal-Secret', INTERNAL_SECRET)
       .send({ newUsername: 'someone_else' });
 
     expect(res.status).toBe(401);
   });
 
-  it('POST /login/reissue-token => 400 when newUsername is missing', async () => {
+  it('POST /login/reissue-token => 400 when newUsername is missing (with a valid internal secret)', async () => {
     const res = await request(app)
       .post('/login/reissue-token')
+      .set('X-Internal-Secret', INTERNAL_SECRET)
       .set('Authorization', `Bearer ${token}`)
       .send({});
 
     expect(res.status).toBe(400);
   });
 
-  it('POST /login/reissue-token => 401 when the old token is invalid', async () => {
+  it('POST /login/reissue-token => 401 when the old token is invalid (with a valid internal secret)', async () => {
     const res = await request(app)
       .post('/login/reissue-token')
+      .set('X-Internal-Secret', INTERNAL_SECRET)
       .set('Authorization', 'Bearer this.is.not.a.valid.jwt')
       .send({ newUsername: `${username}_renamed` });
 
     expect(res.status).toBe(401);
   });
 
-  it('POST /login/reissue-token => 200 + a fresh token for the new username', async () => {
+  it('POST /login/reissue-token => 200 + a fresh token for the new username (with a valid internal secret)', async () => {
     const newUsername = `${username}_renamed`;
 
     const res = await request(app)
       .post('/login/reissue-token')
+      .set('X-Internal-Secret', INTERNAL_SECRET)
       .set('Authorization', `Bearer ${token}`)
       .send({ newUsername });
 

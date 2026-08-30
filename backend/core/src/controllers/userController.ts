@@ -319,7 +319,15 @@ export const updateUserController = async (
       const { data: reissueData } = await axios.post(
         `http://localhost:${iamPort}/login/reissue-token`,
         { newUsername: newU },
-        { headers: { Authorization: `Bearer ${requesterToken}` } }
+        {
+          headers: {
+            Authorization: `Bearer ${requesterToken}`,
+            // اثبات این‌که این درخواست واقعاً از core میاد، نه مستقیم از یه کاربر —
+            // بدون این هدر، iam این درخواست رو رد می‌کنه (رفع یه آسیب‌پذیری بحرانی
+            // ارتقای سطح دسترسی که با تست واقعی پیدا شد).
+            "X-Internal-Secret": process.env.INTERNAL_SERVICE_SECRET,
+          },
+        }
       );
 
       res.json({

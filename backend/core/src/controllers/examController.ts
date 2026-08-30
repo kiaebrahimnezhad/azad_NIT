@@ -394,6 +394,7 @@ export const getExamByEid = async (
 
   if (!token) {
     res.status(401).json({ message: "Token not provided" });
+    return;
   }
 
   try {
